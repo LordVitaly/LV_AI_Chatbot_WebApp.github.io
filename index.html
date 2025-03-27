@@ -5,26 +5,117 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        body { font-family: Arial; margin: 0; padding: 16px; background-color: var(--tg-theme-bg-color, #fff); color: var(--tg-theme-text-color, #000); }
-        .card { padding: 16px; margin-bottom: 16px; border-radius: 8px; background-color: var(--tg-theme-secondary-bg-color, #f0f0f0); }
-        .field { margin-bottom: 12px; }
-        label { display: block; margin-bottom: 4px; font-weight: bold; }
-        input, select, textarea { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; }
-        button { background-color: var(--tg-theme-button-color, #3390ec); color: var(--tg-theme-button-text-color, #fff); border: none; padding: 10px 16px; border-radius: 4px; cursor: pointer; }
+        body { 
+            font-family: Arial; 
+            margin: 0; 
+            padding: 16px; 
+            background-color: var(--tg-theme-bg-color, #fff); 
+            color: var(--tg-theme-text-color, #000); 
+        }
+        .card { 
+            padding: 16px; 
+            margin-bottom: 16px; 
+            border-radius: 8px; 
+            background-color: var(--tg-theme-secondary-bg-color, #f0f0f0); 
+        }
+        .field { 
+            margin-bottom: 12px; 
+        }
+        label { 
+            display: block; 
+            margin-bottom: 4px; 
+            font-weight: bold; 
+        }
+        input, select, textarea { 
+            width: 100%; 
+            padding: 8px; 
+            border-radius: 4px; 
+            border: 1px solid #ccc; 
+            box-sizing: border-box;
+        }
+        .slider-container {
+            display: flex;
+            align-items: center;
+        }
+        .slider-container input {
+            flex: 1;
+            margin-right: 8px;
+        }
+        .slider-value {
+            min-width: 30px;
+            text-align: right;
+        }
+        button { 
+            background-color: var(--tg-theme-button-color, #3390ec); 
+            color: var(--tg-theme-button-text-color, #fff); 
+            border: none; 
+            padding: 10px 16px; 
+            border-radius: 4px; 
+            cursor: pointer; 
+            width: 100%;
+            margin-top: 16px;
+            font-weight: bold;
+        }
+        .toggle {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 24px;
+        }
+        .toggle input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 24px;
+        }
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .toggle-slider {
+            background-color: var(--tg-theme-button-color, #3390ec);
+        }
+        input:checked + .toggle-slider:before {
+            transform: translateX(26px);
+        }
+        .checkbox-field {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .checkbox-field label {
+            margin-bottom: 0;
+        }
     </style>
 </head>
 <body>
     <h2>Настройки бота</h2>
     
     <div class="card">
-        <h3>API ключи</h3>
+        <h3>Персонаж</h3>
         <div class="field">
-            <label for="google_api_key">Google API ключ</label>
-            <input type="password" id="google_api_key" placeholder="Введите ключ Google API">
-        </div>
-        <div class="field">
-            <label for="telegram_token">Telegram токен</label>
-            <input type="password" id="telegram_token" placeholder="Введите Telegram токен">
+            <label for="character">Выберите персонажа</label>
+            <select id="character">
+                <option value="">Загрузка персонажей...</option>
+            </select>
         </div>
     </div>
     
@@ -33,14 +124,71 @@
         <div class="field">
             <label for="model">Модель</label>
             <select id="model">
-                <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
-                <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                <option value="gemini-2.0-flash-001">Gemini 2.0 Flash</option>
+                <option value="gemini-2.0-pro-001">Gemini 2.0 Pro</option>
+                <option value="gemini-2.0-ultra-001">Gemini 2.0 Ultra</option>
+                <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash Experimental</option>
             </select>
         </div>
         <div class="field">
             <label for="temperature">Температура (0.0 - 1.0)</label>
-            <input type="range" id="temperature" min="0" max="1" step="0.1" value="0.7">
-            <span id="temp_value">0.7</span>
+            <div class="slider-container">
+                <input type="range" id="temperature" min="0" max="1" step="0.05" value="0.7">
+                <span id="temp_value" class="slider-value">0.7</span>
+            </div>
+        </div>
+        <div class="field">
+            <label for="top_p">Top-P (0.0 - 1.0)</label>
+            <div class="slider-container">
+                <input type="range" id="top_p" min="0" max="1" step="0.05" value="0.95">
+                <span id="top_p_value" class="slider-value">0.95</span>
+            </div>
+        </div>
+        <div class="field">
+            <label for="top_k">Top-K (1 - 40)</label>
+            <div class="slider-container">
+                <input type="range" id="top_k" min="1" max="40" step="1" value="1">
+                <span id="top_k_value" class="slider-value">1</span>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card">
+        <h3>Настройки ответов</h3>
+        <div class="checkbox-field">
+            <label for="streaming_mode">Потоковый режим</label>
+            <label class="toggle">
+                <input type="checkbox" id="streaming_mode" checked>
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+        <div class="checkbox-field">
+            <label for="streaming_edit_mode">Редактирование в потоковом режиме</label>
+            <label class="toggle">
+                <input type="checkbox" id="streaming_edit_mode" checked>
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+        <div class="field">
+            <label for="streaming_edit_interval">Интервал обновления (секунды)</label>
+            <div class="slider-container">
+                <input type="range" id="streaming_edit_interval" min="0.5" max="5" step="0.5" value="2.0">
+                <span id="streaming_interval_value" class="slider-value">2.0</span>
+            </div>
+        </div>
+        <div class="checkbox-field">
+            <label for="enable_message_buttons">Кнопки в сообщениях</label>
+            <label class="toggle">
+                <input type="checkbox" id="enable_message_buttons" checked>
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+        <div class="checkbox-field">
+            <label for="enable_image_generation">Генерация изображений</label>
+            <label class="toggle">
+                <input type="checkbox" id="enable_image_generation" checked>
+                <span class="toggle-slider"></span>
+            </label>
         </div>
     </div>
     
@@ -51,23 +199,134 @@
         let tg = window.Telegram.WebApp;
         tg.expand();
         
-        // Заполнение значениями из Telegram, если они есть
-        if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
-            // Тут можно загрузить настройки пользователя, если бот их передаст
-        }
-        
-        // Показ значения температуры
+        // Обработчики для отображения значений слайдеров
         document.getElementById('temperature').addEventListener('input', function() {
             document.getElementById('temp_value').textContent = this.value;
         });
         
+        document.getElementById('top_p').addEventListener('input', function() {
+            document.getElementById('top_p_value').textContent = this.value;
+        });
+        
+        document.getElementById('top_k').addEventListener('input', function() {
+            document.getElementById('top_k_value').textContent = this.value;
+        });
+        
+        document.getElementById('streaming_edit_interval').addEventListener('input', function() {
+            document.getElementById('streaming_interval_value').textContent = this.value;
+        });
+        
+        // Получаем текущие настройки и список персонажей
+        function loadInitialData() {
+            if (tg.initDataUnsafe && tg.initDataUnsafe.start_param) {
+                try {
+                    // Разбираем JSON из start_param
+                    const initialData = JSON.parse(tg.initDataUnsafe.start_param);
+                    
+                    // Заполняем данные о персонажах
+                    if (initialData.characters) {
+                        const characterSelect = document.getElementById('character');
+                        characterSelect.innerHTML = '';
+                        
+                        initialData.characters.forEach(char => {
+                            const option = document.createElement('option');
+                            option.value = JSON.stringify({name: char.name, user_created: char.user_created});
+                            option.textContent = char.name + (char.user_created ? ' [Пользовательский]' : '');
+                            characterSelect.appendChild(option);
+                            
+                            // Выбираем текущего персонажа
+                            if (initialData.current_character && 
+                                initialData.current_character.name === char.name && 
+                                initialData.current_character.user_created === char.user_created) {
+                                option.selected = true;
+                            }
+                        });
+                    }
+                    
+                    // Заполняем настройки модели
+                    if (initialData.settings) {
+                        const settings = initialData.settings;
+                        
+                        // Модель
+                        if (settings.model_name) {
+                            document.getElementById('model').value = settings.model_name;
+                        }
+                        
+                        // Параметры модели
+                        if (settings.temperature !== undefined) {
+                            const tempSlider = document.getElementById('temperature');
+                            tempSlider.value = settings.temperature;
+                            document.getElementById('temp_value').textContent = settings.temperature;
+                        }
+                        
+                        if (settings.top_p !== undefined) {
+                            const topPSlider = document.getElementById('top_p');
+                            topPSlider.value = settings.top_p;
+                            document.getElementById('top_p_value').textContent = settings.top_p;
+                        }
+                        
+                        if (settings.top_k !== undefined) {
+                            const topKSlider = document.getElementById('top_k');
+                            topKSlider.value = settings.top_k;
+                            document.getElementById('top_k_value').textContent = settings.top_k;
+                        }
+                        
+                        // Настройки ответов
+                        if (settings.streaming_mode !== undefined) {
+                            document.getElementById('streaming_mode').checked = settings.streaming_mode;
+                        }
+                        
+                        if (settings.streaming_edit_mode !== undefined) {
+                            document.getElementById('streaming_edit_mode').checked = settings.streaming_edit_mode;
+                        }
+                        
+                        if (settings.streaming_edit_interval !== undefined) {
+                            const intervalSlider = document.getElementById('streaming_edit_interval');
+                            intervalSlider.value = settings.streaming_edit_interval;
+                            document.getElementById('streaming_interval_value').textContent = settings.streaming_edit_interval;
+                        }
+                        
+                        if (settings.enable_message_buttons !== undefined) {
+                            document.getElementById('enable_message_buttons').checked = settings.enable_message_buttons;
+                        }
+                        
+                        if (settings.enable_image_generation !== undefined) {
+                            document.getElementById('enable_image_generation').checked = settings.enable_image_generation;
+                        }
+                    }
+                } catch (e) {
+                    console.error("Ошибка при разборе начальных данных:", e);
+                }
+            }
+        }
+        
+        // Загружаем данные при старте
+        loadInitialData();
+        
         // Отправка данных боту
         document.getElementById('save_button').addEventListener('click', function() {
+            const characterValue = document.getElementById('character').value;
+            let character = null;
+            
+            if (characterValue) {
+                try {
+                    character = JSON.parse(characterValue);
+                } catch (e) {
+                    console.error("Ошибка при разборе значения персонажа:", e);
+                }
+            }
+            
             const settings = {
-                google_api_key: document.getElementById('google_api_key').value,
-                telegram_token: document.getElementById('telegram_token').value,
-                model: document.getElementById('model').value,
-                temperature: parseFloat(document.getElementById('temperature').value)
+                character: character,
+                model_name: document.getElementById('model').value,
+                temperature: parseFloat(document.getElementById('temperature').value),
+                top_p: parseFloat(document.getElementById('top_p').value),
+                top_k: parseInt(document.getElementById('top_k').value),
+                streaming_mode: document.getElementById('streaming_mode').checked,
+                streaming_edit_mode: document.getElementById('streaming_edit_mode').checked,
+                streaming_edit_interval: parseFloat(document.getElementById('streaming_edit_interval').value),
+                enable_message_buttons: document.getElementById('enable_message_buttons').checked,
+                enable_image_generation: document.getElementById('enable_image_generation').checked
             };
             
             // Отправка данных обратно в Telegram
