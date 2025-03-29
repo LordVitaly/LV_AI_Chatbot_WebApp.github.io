@@ -203,31 +203,54 @@ input:checked + .toggle-slider:before {
     border-radius: 8px;
 }
 
-/* Notification styles */
+/* Стили для индикатора загрузки */
+.loading-indicator {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    padding: 15px 20px;
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    border-radius: 10px;
+    z-index: 9999;
+    text-align: center;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+
+/* Улучшенные стили уведомлений */
 .notification {
     position: fixed;
     bottom: 20px;
     left: 50%;
     transform: translateX(-50%);
-    background-color: rgba(0, 0, 0, 0.8);
-    color: white;
     padding: 12px 20px;
     border-radius: 8px;
     z-index: 1000;
     animation: fadeInOut 5s forwards;
     max-width: 90%;
     text-align: center;
+    color: white;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.notification.info {
+    background-color: rgba(0, 0, 0, 0.8);
 }
 
 .notification.success {
     background-color: rgba(40, 167, 69, 0.9);
 }
 
+.notification.error {
+    background-color: rgba(220, 53, 69, 0.9);
+}
+
 @keyframes fadeInOut {
-    0% { opacity: 0; }
-    10% { opacity: 1; }
-    90% { opacity: 1; }
-    100% { opacity: 0; }
+    0% { opacity: 0; transform: translate(-50%, 20px); }
+    10% { opacity: 1; transform: translate(-50%, 0); }
+    90% { opacity: 1; transform: translate(-50%, 0); }
+    100% { opacity: 0; transform: translate(-50%, -20px); }
 }
 
 /* Loading states */
