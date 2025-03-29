@@ -11,6 +11,9 @@ const CHARACTER_NAME_LIMIT = 50;
 const CHARACTER_DESCRIPTION_LIMIT = 1000;
 const CHARACTER_GREETING_LIMIT = 500;
 
+// Флаг загрузки персонажей
+let charactersLoaded = false;
+
 // Инициализация функций при загрузке документа
 document.addEventListener('DOMContentLoaded', function() {
     // Инициализация вкладок
@@ -24,7 +27,16 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Обработчик кнопки сохранения
     document.getElementById('save_button').addEventListener('click', saveSettings);
+    
+    // Настраиваем обработчик событий для получения данных от Telegram
+    tg.onEvent('viewportChanged', handleViewportChanged);
 });
+
+// Обработчик изменения области просмотра (для мобильных устройств)
+function handleViewportChanged(event) {
+    // Может потребоваться для обновления UI при изменении размера экрана
+    console.log('Viewport changed:', event);
+}
 
 // Инициализация системы вкладок
 function initTabs() {
@@ -48,7 +60,7 @@ function initTabs() {
             });
             
             // Если выбрана вкладка персонажей, проверяем нужно ли загрузить персонажей
-            if (tabId === 'characters' && characters.length === 0) {
+            if (tabId === 'characters' && !charactersLoaded) {
                 loadCharacters();
             }
         });
@@ -77,7 +89,27 @@ function initSliders() {
 // Загрузка списка персонажей
 function loadCharacters() {
     // Отображаем персонажей, которые есть в глобальном массиве
-    renderCharacterList();
+    if (characters.length === 0) {
+        const characterListElement = document.getElementById('character-list');
+        if (characterListElement) {
+            characterListElement.innerHTML = '<div class="character-item loading">Загрузка персонажей... Пожалуйста, проверьте, есть ли кнопки загрузки в чате.</div>';
+        }
+    } else {
+        renderCharacterList();
+        charactersLoaded = true;
+    }
+    
+    // Уведомляем пользователя, если персонажи не были загружены
+    if (characters.length === 0) {
+        const notification = document.createElement('div');
+        notification.className = 'notification';
+        notification.textContent = 'Для загрузки персонажей, вернитесь в чат Telegram и нажмите на кнопку "Загрузить персонажей"';
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+            document.body.removeChild(notification);
+        }, 5000);
+    }
 }
 
 // Получаем текущие настройки и список персонажей
@@ -90,6 +122,7 @@ function loadInitialData() {
             // Заполняем данные о персонажах, если они есть
             if (initialData.characters) {
                 characters = initialData.characters;
+                charactersLoaded = true;
             }
             
             // Заполняем настройки модели
@@ -113,7 +146,19 @@ function loadInitialData() {
                     });
                 }
             }
+            
+            // Регистрируем обработчик MainButton
+            if (initialData.load_characters) {
+                tg.MainButton.text = "Загрузить персонажей";
+                tg.MainButton.isVisible = true;
+                tg.MainButton.onClick(function() {
+                    tg.sendData(JSON.stringify({action: "load_characters"}));
+                });
+            }
         }
+        
+        // Регистрируем обработчик сообщений от бота через WebApp
+        tg.onEvent('message', handleBotMessage);
         
         // Обновляем интерфейс с полученными данными
         renderCharacterList();
@@ -129,6 +174,61 @@ function loadInitialData() {
         }
     } catch (e) {
         console.error("Ошибка при загрузке начальных данных:", e);
+    }
+}
+
+// Обработчик сообщений от бота
+function handleBotMessage(message) {
+    console.log("Received message from bot:", message);
+    
+    // Try to parse the message as JSON
+    try {
+        let data;
+        
+        // Check if this is a callback message with characters data
+        if (message.webAppData) {
+            data = JSON.parse(message.webAppData.data);
+        }
+        // Or if it's a normal message with characters data
+        else if (typeof message === 'string') {
+            data = JSON.parse(message);
+        }
+        // Or if it's already an object
+        else if (typeof message === 'object') {
+            data = message;
+        }
+        
+        // Process characters data if available
+        if (data && data.action === "characters_chunk") {
+            processCharactersChunk(data);
+        }
+    } catch (e) {
+        console.error("Error processing message:", e);
+    }
+}
+
+// Process a chunk of characters data
+function processCharactersChunk(data) {
+    if (data.characters && Array.isArray(data.characters)) {
+        // Add these characters to our global array
+        characters = [...characters, ...data.characters];
+        
+        // Update the UI
+        renderCharacterList();
+        updateCharacterSelect();
+        
+        // Show notification
+        const notification = document.createElement('div');
+        notification.className = 'notification success';
+        notification.textContent = `Загружено ${data.characters.length} персонажей (часть ${data.chunk_index + 1}/${data.total_chunks})`;
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+            document.body.removeChild(notification);
+        }, 3000);
+        
+        // Set the flag to indicate characters are loaded
+        charactersLoaded = true;
     }
 }
 
