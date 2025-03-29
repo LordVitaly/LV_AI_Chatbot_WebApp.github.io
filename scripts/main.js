@@ -365,10 +365,15 @@ function saveSettings() {
         tg.sendData(settingsJson);
         console.log("Данные успешно отправлены");
         
-        // Закрыть webapp через небольшую задержку
+        // Обновляем уведомление об успешной отправке
+        notification.textContent = 'Настройки отправлены! Пожалуйста, дождитесь подтверждения.';
+        notification.className = 'notification success';
+        
+        // Увеличенная задержка перед закрытием, чтобы данные успели обработаться
         setTimeout(() => {
+            console.log("Closing webapp after delay");
             tg.close();
-        }, 1000);
+        }, 5000);  // Increase to 5 seconds for better reliability
     } catch (e) {
         console.error("Ошибка отправки данных:", e);
         
