@@ -15,12 +15,10 @@ const CHARACTER_NAME_LIMIT = 50;
 const CHARACTER_DESCRIPTION_LIMIT = 1000;
 const CHARACTER_GREETING_LIMIT = 500;
 
-// Флаг загрузки персонажей
-let charactersLoaded = false;
-
 // Флаг успешной загрузки настроек
 let settingsLoaded = false;
-
+// Флаг успешной загрузки ВСЕХ персонажей
+let charactersFullyLoaded = false;
 // Флаг отправки запроса данных
 let dataRequested = false;
 
@@ -28,8 +26,8 @@ let dataRequested = false;
 document.addEventListener('DOMContentLoaded', function() {
     console.log("DOM loaded, initializing WebApp UI");
     
-    // Показываем индикатор загрузки
-    showLoadingIndicator("Загрузка интерфейса...");
+    // Показываем индикатор загрузки немедленно
+    showLoadingIndicator("Инициализация интерфейса...");
     
     // Инициализация вкладок
     initTabs();
@@ -48,8 +46,12 @@ document.addEventListener('DOMContentLoaded', function() {
     tg.BackButton.onClick(handleBackButton);
     
     // Регистрируем обработчик сообщений от бота
-    console.log("Registering message event handler for receiving data");
-    tg.onEvent('message', handleBotMessage);
+    window.Telegram.WebApp.onEvent('messageReceived', handleBotMessage);
+    console.log("Registered 'messageReceived' event handler for receiving data");
+    
+    // Инициализируем списки для отображения пустых данных
+    renderCharacterList();
+    updateCharacterSelect();
     
     // Логируем состояние WebApp
     console.log("WebApp initialization completed");
@@ -60,7 +62,7 @@ document.addEventListener('DOMContentLoaded', function() {
     requestInitialData();
     
     // Тайм-аут на случай, если данные не пришли
-    setTimeout(checkDataLoaded, 15000);  // Увеличен таймаут до 15 секунд
+    setTimeout(checkDataLoaded, 20000);  // Увеличиваем таймаут до 20 секунд
 });
 
 // Функция запроса данных от бота
@@ -76,8 +78,9 @@ function requestInitialData() {
     try {
         // Отправляем запрос на получение данных
         window.Telegram.WebApp.sendData(JSON.stringify({ action: "request_initial_data" }));
-        console.log("Initial data request sent");
+        console.log("Initial data request sent via sendData");
         dataRequested = true;
+        // Не скрываем индикатор здесь, ждем данные от бота
     } catch (e) {
         console.error("Error sending initial data request:", e);
         hideLoadingIndicator();
@@ -85,154 +88,166 @@ function requestInitialData() {
         
         // Помечаем как "загруженные", чтобы убрать таймаут
         settingsLoaded = true;
-        charactersLoaded = true;
+        charactersFullyLoaded = true;
         renderCharacterList();
         updateCharacterSelect();
     }
 }
 
 // Обработчик сообщений от бота
-function handleBotMessage(message) {
-    console.log("Received message from bot:", message);
+function handleBotMessage(event) {
+    console.log("Received message event:", event);
+    const messageData = event.data;
     
-    // Try to parse the message as JSON
+    if (!messageData || typeof messageData !== 'string') {
+        console.log("Received non-string or empty message data, skipping:", messageData);
+        return;
+    }
+    
+    console.log("Processing message data (first 200 chars):", messageData.substring(0, 200) + "...");
+    
     try {
-        let messageData = null;
+        const parsedData = JSON.parse(messageData);
+        console.log("Parsed message data:", parsedData);
         
-        // Check if this is a callback message with data
-        if (message.webAppData) {
-            console.log("Message contains webAppData");
-            messageData = message.webAppData.data;
-        }
-        // Or if it's a normal message with data
-        else if (typeof message === 'string') {
-            console.log("Message is a string, using as is");
-            messageData = message;
-        }
-        // Or if it's already an object with data
-        else if (typeof message === 'object' && message.data) {
-            console.log("Message is an object with data property");
-            messageData = message.data;
-        }
-        // Handle text messages
-        else if (message.text) {
-            console.log("Message contains text property");
-            messageData = message.text;
-        }
-        
-        if (!messageData) {
-            console.log("Message doesn't contain usable data, skipping");
+        if (!parsedData.action) {
+            console.log("Received message data without 'action' field, skipping");
             return;
         }
         
-        // Если сообщение обернуто в Markdown обратные кавычки, удаляем их
-        if (typeof messageData === 'string' && messageData.startsWith('`') && messageData.endsWith('`')) {
-            messageData = messageData.substring(1, messageData.length - 1);
+        // Обработка разных типов сообщений
+        
+        // 1. Полные начальные данные (если поместились в одно сообщение)
+        if (parsedData.action === "initial_state" && parsedData.data) {
+            console.log("Processing full initial_state data");
+            processInitialData(parsedData.data);
+            settingsLoaded = true;
+            charactersFullyLoaded = true;
+            hideLoadingIndicator();
+            showNotification('Настройки и персонажи успешно загружены!', 'success');
         }
-        
-        console.log("Processing message data (first 200 chars):", 
-                   typeof messageData === 'string' ? messageData.substring(0, 200) + "..." : "Not a string");
-        
-        try {
-            const parsedData = JSON.parse(messageData);
-            console.log("Parsed message data:", parsedData);
-            
-            if (parsedData.action === "initial_state" && parsedData.data) {
-                console.log("Processing full initial_state data");
-                processInitialData(parsedData.data);
-            } 
-            else if (parsedData.action === "initial_settings" && parsedData.data) {
-                console.log("Processing initial_settings data (chunked mode)");
-                // Применяем настройки и текущего персонажа
-                if (parsedData.data.settings) {
-                    updateUIWithSettings(parsedData.data.settings);
-                    settingsLoaded = true;
-                }
-                
-                if (parsedData.data.current_character) {
-                    selectCharacterInUI(parsedData.data.current_character);
-                }
-                
-                // Не скрываем индикатор загрузки - ждем чанки с персонажами
-                showLoadingIndicator("Загрузка персонажей...");
-            } 
-            else if (parsedData.action === "characters_chunk" && parsedData.characters) {
-                console.log(`Processing characters_chunk ${parsedData.chunk_index + 1}/${parsedData.total_chunks}`);
-                
-                // Добавляем персонажей из чанка
-                characters = [...characters, ...parsedData.characters];
-                console.log(`Total characters after adding chunk: ${characters.length}`);
-                
-                // Обновляем интерфейс
+        // 2. Только начальные настройки (данные большие)
+        else if (parsedData.action === "initial_settings" && parsedData.data) {
+            console.log("Processing initial_settings data (chunked mode start)");
+            // Применяем настройки и текущего персонажа
+            if (parsedData.data.settings) {
+                updateUIWithSettings(parsedData.data.settings);
+                settingsLoaded = true;
+                // Сбрасываем текущих персонажей перед загрузкой чанков
+                characters = [];
                 renderCharacterList();
                 updateCharacterSelect();
-                
-                // Если это последний чанк, скрываем индикатор загрузки
-                if (parsedData.chunk_index + 1 >= parsedData.total_chunks) {
-                    hideLoadingIndicator();
-                    charactersLoaded = true;
-                    showNotification(`Загружено ${characters.length} персонажей.`, 'success');
-                } else {
-                    showLoadingIndicator(`Загрузка персонажей... (${parsedData.chunk_index + 1}/${parsedData.total_chunks})`);
-                }
-            } 
-            else {
-                console.log("Received message data is not recognized as initial state or chunk");
             }
-        } catch (e) {
-            console.error("Error parsing message data JSON:", e);
-            console.error("Original data:", messageData);
-            hideLoadingIndicator();
+            if (parsedData.data.current_character) {
+                // Запоминаем, какой персонаж должен быть выбран после загрузки всех
+                window.pendingSelectedCharacter = parsedData.data.current_character;
+            }
+            // Не скрываем индикатор загрузки - ждем чанки с персонажами
+            showLoadingIndicator("Загрузка персонажей...");
+            charactersFullyLoaded = false;
+        }
+        // 3. Чанк с персонажами
+        else if (parsedData.action === "characters_chunk" && parsedData.characters) {
+            console.log(`Processing characters_chunk ${parsedData.chunk_index + 1}/${parsedData.total_chunks}`);
+            
+            // Добавляем персонажей из чанка
+            characters = characters.concat(parsedData.characters || []);
+            console.log(`Total characters after adding chunk: ${characters.length}`);
+            
+            // Обновляем интерфейс
+            renderCharacterList();
+            updateCharacterSelect();
+            
+            // Если это последний чанк
+            if (parsedData.chunk_index + 1 >= parsedData.total_chunks) {
+                charactersFullyLoaded = true;
+                hideLoadingIndicator();
+                showNotification(`Загружено ${characters.length} персонажей.`, 'success');
+                // Если был ожидающий выбранный персонаж, применяем его
+                if (window.pendingSelectedCharacter) {
+                    selectCharacterInUI(window.pendingSelectedCharacter);
+                    window.pendingSelectedCharacter = null;
+                }
+            } else {
+                // Обновляем текст индикатора загрузки
+                showLoadingIndicator(`Загрузка персонажей... (${parsedData.chunk_index + 1}/${parsedData.total_chunks})`);
+            }
+        }
+        else {
+            console.log("Received message data with unknown action:", parsedData.action);
+        }
+        
+    } catch (e) {
+        console.error("Error parsing or processing message data JSON:", e);
+        console.error("Original data:", messageData);
+        // Не скрываем индикатор, если ошибка во время загрузки чанков
+        if (!settingsLoaded || !charactersFullyLoaded) {
+            showLoadingIndicator("Ошибка загрузки данных");
             showNotification('Ошибка обработки данных от бота', 'error');
         }
-    } catch (e) {
-        console.error("Error processing message from bot:", e);
-        hideLoadingIndicator();
-        showNotification('Ошибка при обработке сообщения от бота', 'error');
     }
 }
 
 // Функция обработки полученных полных данных
 function processInitialData(data) {
-    console.log("Processing complete initial data");
+    console.log("Processing complete initial data block");
     
     // Обрабатываем настройки
     if (data.settings) {
         updateUIWithSettings(data.settings);
         settingsLoaded = true;
-    }
-    
-    // Обрабатываем текущего персонажа
-    if (data.current_character) {
-        selectCharacterInUI(data.current_character);
+    } else {
+        console.warn("Initial data block missing settings.");
     }
     
     // Обрабатываем список персонажей
-    if (data.characters && data.characters.length > 0) {
+    if (data.characters && Array.isArray(data.characters)) {
         characters = data.characters;
         renderCharacterList();
         updateCharacterSelect();
-        charactersLoaded = true;
+        charactersFullyLoaded = true;
+    } else {
+        console.warn("Initial data block missing characters array.");
+        characters = [];
+        renderCharacterList();
+        updateCharacterSelect();
+        charactersFullyLoaded = true;
     }
     
-    console.log("Initial data processed successfully");
-    hideLoadingIndicator();
-    showNotification('Настройки и персонажи успешно загружены!', 'success');
+    // Обрабатываем текущего персонажа (после загрузки списка)
+    if (data.current_character) {
+        selectCharacterInUI(data.current_character);
+    } else {
+        console.warn("Initial data block missing current_character.");
+    }
+    
+    console.log("Complete initial data processed successfully");
 }
 
 // Функция проверки загрузки данных после таймаута
 function checkDataLoaded() {
-    if (!settingsLoaded || !charactersLoaded) {
+    if (!settingsLoaded || !charactersFullyLoaded) {
         console.warn("Initial data not fully loaded after timeout");
         hideLoadingIndicator();
-        showNotification('Не удалось загрузить все данные от бота за отведенное время. Некоторые функции могут быть недоступны.', 'error', 7000);
         
-        // Показываем то, что есть
-        if (!charactersLoaded) {
+        // Показываем ошибку только если что-то действительно не загрузилось
+        if (!settingsLoaded) {
+            showNotification('Не удалось загрузить настройки от бота.', 'error', 7000);
+        } else if (!charactersFullyLoaded) {
+            showNotification('Не удалось загрузить полный список персонажей от бота.', 'error', 7000);
+        }
+        
+        // Показываем то, что есть, чтобы интерфейс не был пустым
+        if (!charactersFullyLoaded) {
             renderCharacterList();
             updateCharacterSelect();
-            charactersLoaded = true;  // Предотвращаем повторное срабатывание
+            charactersFullyLoaded = true;  // Предотвращаем повторное срабатывание
         }
+        if (!settingsLoaded) {
+            settingsLoaded = true;  // Предотвращаем повторное срабатывание
+        }
+    } else {
+        console.log("Data check: Settings and Characters seem loaded.");
     }
 }
 
@@ -357,11 +372,6 @@ function initTabs() {
                     content.classList.add('active');
                 }
             });
-            
-            // Если выбрана вкладка персонажей, проверяем нужно ли загрузить персонажей
-            if (tabId === 'characters' && !charactersLoaded) {
-                loadCharacters();
-            }
         });
     });
 }
@@ -383,119 +393,6 @@ function initSliders() {
     document.getElementById('streaming_edit_interval').addEventListener('input', function() {
         document.getElementById('streaming_interval_value').textContent = this.value;
     });
-}
-
-// Загрузка списка персонажей
-function loadCharacters() {
-    console.log("Loading characters...");
-    
-    // Отображаем персонажей, которые есть в глобальном массиве
-    if (characters.length === 0) {
-        console.log("No characters available yet");
-        const characterListElement = document.getElementById('character-list');
-        if (characterListElement) {
-            characterListElement.innerHTML = '<div class="character-item loading">Загрузка персонажей... Ожидание данных от бота.</div>';
-        }
-    } else {
-        console.log(`Rendering ${characters.length} characters`);
-        renderCharacterList();
-        charactersLoaded = true;
-    }
-}
-
-// Получаем текущие настройки и список персонажей
-function loadInitialData() {
-    console.log("Loading initial data");
-    try {
-        // Если есть параметр startapp или start, разбираем JSON из него
-        let initialData = null;
-        
-        if (tg.initDataUnsafe && tg.initDataUnsafe.start_param) {
-            console.log("Start parameter found:", tg.initDataUnsafe.start_param);
-            try {
-                initialData = JSON.parse(tg.initDataUnsafe.start_param);
-                console.log("Parsed initial data from start_param:", initialData);
-            } catch (e) {
-                console.error("Error parsing start_param:", e);
-            }
-        } 
-        
-        // Попробуем получить данные из URL параметра start
-        if (!initialData) {
-            const urlParams = new URLSearchParams(window.location.search);
-            const startParam = urlParams.get('start');
-            if (startParam) {
-                console.log("Start parameter found in URL:", startParam);
-                try {
-                    initialData = JSON.parse(startParam);
-                    console.log("Parsed initial data from URL:", initialData);
-                } catch (e) {
-                    console.error("Error parsing URL start parameter:", e);
-                }
-            }
-        }
-        
-        if (initialData) {
-            // Заполняем данные о персонажах, если они есть
-            if (initialData.characters && initialData.characters.length > 0) {
-                console.log(`Loading ${initialData.characters.length} characters from initial data`);
-                characters = initialData.characters;
-                charactersLoaded = true;
-            }
-            
-            // Заполняем настройки модели
-            if (initialData.settings) {
-                console.log("Loading settings from initial data");
-                updateUIWithSettings(initialData.settings);
-                settingsLoaded = true;
-            }
-            
-            // Если есть текущий персонаж, выбираем его
-            if (initialData.current_character) {
-                console.log("Current character found:", initialData.current_character);
-                const currentCharacter = initialData.current_character;
-                
-                // Если персонажа нет в списке, добавляем его
-                if (!characters.some(c => c.name === currentCharacter.name && c.user_created === currentCharacter.user_created)) {
-                    console.log("Adding current character to the list");
-                    characters.push({
-                        name: currentCharacter.name,
-                        user_created: currentCharacter.user_created,
-                        description: "",
-                        greeting: "Привет!"
-                    });
-                }
-                
-                // Выбираем персонажа в UI
-                selectCharacterInUI(currentCharacter);
-            }
-            
-            // Регистрируем обработчик MainButton
-            if (initialData.load_characters) {
-                console.log("Setting up MainButton for character loading");
-                tg.MainButton.text = "Загрузить персонажей";
-                tg.MainButton.isVisible = true;
-                tg.MainButton.onClick(function() {
-                    console.log("MainButton clicked, sending load_characters request");
-                    tg.sendData(JSON.stringify({action: "load_characters"}));
-                });
-            }
-        } else {
-            console.log("No initial data found, using default settings");
-            
-            // Показываем уведомление
-            if (!settingsLoaded) {
-                showNotification('Не удалось загрузить настройки. Используются значения по умолчанию.', 'warning');
-            }
-        }
-        
-        // Обновляем интерфейс с полученными данными
-        renderCharacterList();
-        updateCharacterSelect();
-    } catch (e) {
-        console.error("Error loading initial data:", e);
-        showNotification('Ошибка при загрузке начальных данных. Пожалуйста, попробуйте позже.', 'error');
-    }
 }
 
 // Обновление UI данными из настроек
