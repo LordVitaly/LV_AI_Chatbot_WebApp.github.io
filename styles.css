@@ -203,6 +203,41 @@ input:checked + .toggle-slider:before {
     border-radius: 8px;
 }
 
+/* Notification styles */
+.notification {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    z-index: 1000;
+    animation: fadeInOut 5s forwards;
+    max-width: 90%;
+    text-align: center;
+}
+
+.notification.success {
+    background-color: rgba(40, 167, 69, 0.9);
+}
+
+@keyframes fadeInOut {
+    0% { opacity: 0; }
+    10% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+/* Loading states */
+.character-item.loading {
+    color: var(--tg-theme-hint-color, #999);
+    text-align: center;
+    padding: 20px;
+    font-style: italic;
+}
+
 .character-item {
     padding: 12px 16px;
     border-bottom: 1px solid var(--tg-theme-hint-color, #ccc);
