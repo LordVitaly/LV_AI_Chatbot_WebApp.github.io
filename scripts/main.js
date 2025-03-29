@@ -145,51 +145,56 @@ function loadInitialData() {
         if (tg.initDataUnsafe && tg.initDataUnsafe.start_param) {
             console.log("Start parameter found:", tg.initDataUnsafe.start_param);
             
-            const initialData = JSON.parse(tg.initDataUnsafe.start_param);
-            console.log("Parsed initial data:", initialData);
-            
-            // Заполняем данные о персонажах, если они есть
-            if (initialData.characters) {
-                console.log(`Loading ${initialData.characters.length} characters from initial data`);
-                characters = initialData.characters;
-                charactersLoaded = true;
-            }
-            
-            // Заполняем настройки модели
-            if (initialData.settings) {
-                console.log("Loading settings from initial data");
-                const settings = initialData.settings;
-                console.log("Settings:", settings);
+            // Обработка параметров запуска
+            try {
+                const initialData = JSON.parse(tg.initDataUnsafe.start_param);
+                console.log("Parsed initial data:", initialData);
                 
-                updateUIWithSettings(settings);
-            }
-            
-            // Если есть текущий персонаж, выбираем его
-            if (initialData.current_character) {
-                console.log("Current character found:", initialData.current_character);
-                const currentCharacter = initialData.current_character;
+                // Заполняем данные о персонажах, если они есть
+                if (initialData.characters) {
+                    console.log(`Loading ${initialData.characters.length} characters from initial data`);
+                    characters = initialData.characters;
+                    charactersLoaded = true;
+                }
                 
-                // Если персонажа нет в списке, добавляем его
-                if (!characters.some(c => c.name === currentCharacter.name && c.user_created === currentCharacter.user_created)) {
-                    console.log("Adding current character to the list");
-                    characters.push({
-                        name: currentCharacter.name,
-                        user_created: currentCharacter.user_created,
-                        description: "",
-                        greeting: "Привет!"
+                // Заполняем настройки модели
+                if (initialData.settings) {
+                    console.log("Loading settings from initial data");
+                    const settings = initialData.settings;
+                    console.log("Settings:", settings);
+                    
+                    updateUIWithSettings(settings);
+                }
+                
+                // Если есть текущий персонаж, выбираем его
+                if (initialData.current_character) {
+                    console.log("Current character found:", initialData.current_character);
+                    const currentCharacter = initialData.current_character;
+                    
+                    // Если персонажа нет в списке, добавляем его
+                    if (!characters.some(c => c.name === currentCharacter.name && c.user_created === currentCharacter.user_created)) {
+                        console.log("Adding current character to the list");
+                        characters.push({
+                            name: currentCharacter.name,
+                            user_created: currentCharacter.user_created,
+                            description: "",
+                            greeting: "Привет!"
+                        });
+                    }
+                }
+                
+                // Регистрируем обработчик MainButton
+                if (initialData.load_characters) {
+                    console.log("Setting up MainButton for character loading");
+                    tg.MainButton.text = "Загрузить персонажей";
+                    tg.MainButton.isVisible = true;
+                    tg.MainButton.onClick(function() {
+                        console.log("MainButton clicked, sending load_characters request");
+                        tg.sendData(JSON.stringify({action: "load_characters"}));
                     });
                 }
-            }
-            
-            // Регистрируем обработчик MainButton
-            if (initialData.load_characters) {
-                console.log("Setting up MainButton for character loading");
-                tg.MainButton.text = "Загрузить персонажей";
-                tg.MainButton.isVisible = true;
-                tg.MainButton.onClick(function() {
-                    console.log("MainButton clicked, sending load_characters request");
-                    tg.sendData(JSON.stringify({action: "load_characters"}));
-                });
+            } catch (e) {
+                console.error("Error parsing start_param JSON:", e);
             }
         }
         
@@ -203,15 +208,19 @@ function loadInitialData() {
         
         // Выбираем текущего персонажа если есть
         if (tg.initDataUnsafe && tg.initDataUnsafe.start_param) {
-            const initialData = JSON.parse(tg.initDataUnsafe.start_param);
-            if (initialData.current_character) {
-                console.log("Selecting current character in UI");
-                const currentCharacter = initialData.current_character;
-                selectCharacterInUI(currentCharacter);
+            try {
+                const initialData = JSON.parse(tg.initDataUnsafe.start_param);
+                if (initialData.current_character) {
+                    console.log("Selecting current character in UI");
+                    const currentCharacter = initialData.current_character;
+                    selectCharacterInUI(currentCharacter);
+                }
+            } catch (e) {
+                console.error("Error selecting current character:", e);
             }
         }
     } catch (e) {
-        console.error("Error loading initial data:", e);
+        console.error("Error in loadInitialData:", e);
     }
 }
 
@@ -415,7 +424,7 @@ function saveSettings() {
     try {
         const settingsJson = JSON.stringify(settings);
         console.log("Settings JSON size:", settingsJson.length, "bytes");
-        console.log("Settings JSON:", settingsJson);
+        console.log("Settings JSON (first 200 chars):", settingsJson.substring(0, 200));
         
         // Показываем уведомление перед отправкой
         const notification = document.createElement('div');
@@ -427,9 +436,32 @@ function saveSettings() {
         window.settingsSent = false;
         
         // Отправка данных обратно в Telegram
-        console.log("Sending data to Telegram...");
+        console.log("Sending data to Telegram using tg.sendData...");
+        
+        // Для отладки - выведем также текущий JSON в консоль и в DOM
+        const debugInfo = document.createElement('div');
+        debugInfo.style.display = 'none';
+        debugInfo.id = 'debug-info';
+        debugInfo.textContent = JSON.stringify(settings, null, 2);
+        document.body.appendChild(debugInfo);
+        
+        // Вызываем метод sendData
         tg.sendData(settingsJson);
-        console.log("Data sent successfully");
+        console.log("Data sent successfully via tg.sendData");
+        
+        // Создаем резервную страховку - отправляем данные через событие
+        try {
+            console.log("Also trying to send via internal event...");
+            // Создаем пользовательское событие для отправки данных
+            const event = new CustomEvent('web_app_data_send', { 
+                detail: { settings: settingsJson } 
+            });
+            window.dispatchEvent(event);
+            console.log("Event dispatched");
+        } catch (eventError) {
+            console.error("Error sending via event:", eventError);
+        }
+        
         window.settingsSent = true;
         
         // Обновляем уведомление об успешной отправке
@@ -439,7 +471,11 @@ function saveSettings() {
         // Увеличенная задержка перед закрытием, чтобы данные успели обработаться
         setTimeout(() => {
             console.log("Closing webapp after delay");
-            tg.close();
+            try {
+                tg.close();
+            } catch (closeError) {
+                console.error("Error closing WebApp:", closeError);
+            }
         }, 5000);  // Увеличено до 5 секунд для лучшей надежности
     } catch (e) {
         console.error("Error sending data:", e);
