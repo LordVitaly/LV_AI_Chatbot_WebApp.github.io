@@ -18,6 +18,9 @@ const CHARACTER_GREETING_LIMIT = 500;
 // Флаг загрузки персонажей
 let charactersLoaded = false;
 
+// Флаг успешной загрузки настроек
+let settingsLoaded = false;
+
 // Инициализация функций при загрузке документа
 document.addEventListener('DOMContentLoaded', function() {
     console.log("DOM loaded, initializing WebApp UI");
@@ -141,15 +144,37 @@ function loadCharacters() {
 function loadInitialData() {
     console.log("Loading initial data");
     try {
-        // Если есть параметр startapp, разбираем JSON из него
+        // Если есть параметр startapp или start, разбираем JSON из него
+        let initialData = null;
+        
         if (tg.initDataUnsafe && tg.initDataUnsafe.start_param) {
             console.log("Start parameter found:", tg.initDataUnsafe.start_param);
-            
-            const initialData = JSON.parse(tg.initDataUnsafe.start_param);
-            console.log("Parsed initial data:", initialData);
-            
+            try {
+                initialData = JSON.parse(tg.initDataUnsafe.start_param);
+                console.log("Parsed initial data from start_param:", initialData);
+            } catch (e) {
+                console.error("Error parsing start_param:", e);
+            }
+        } 
+        
+        // Попробуем получить данные из URL параметра start
+        if (!initialData) {
+            const urlParams = new URLSearchParams(window.location.search);
+            const startParam = urlParams.get('start');
+            if (startParam) {
+                console.log("Start parameter found in URL:", startParam);
+                try {
+                    initialData = JSON.parse(startParam);
+                    console.log("Parsed initial data from URL:", initialData);
+                } catch (e) {
+                    console.error("Error parsing URL start parameter:", e);
+                }
+            }
+        }
+        
+        if (initialData) {
             // Заполняем данные о персонажах, если они есть
-            if (initialData.characters) {
+            if (initialData.characters && initialData.characters.length > 0) {
                 console.log(`Loading ${initialData.characters.length} characters from initial data`);
                 characters = initialData.characters;
                 charactersLoaded = true;
@@ -158,10 +183,8 @@ function loadInitialData() {
             // Заполняем настройки модели
             if (initialData.settings) {
                 console.log("Loading settings from initial data");
-                const settings = initialData.settings;
-                console.log("Settings:", settings);
-                
-                updateUIWithSettings(settings);
+                updateUIWithSettings(initialData.settings);
+                settingsLoaded = true;
             }
             
             // Если есть текущий персонаж, выбираем его
@@ -179,6 +202,9 @@ function loadInitialData() {
                         greeting: "Привет!"
                     });
                 }
+                
+                // Выбираем персонажа в UI
+                selectCharacterInUI(currentCharacter);
             }
             
             // Регистрируем обработчик MainButton
@@ -191,6 +217,20 @@ function loadInitialData() {
                     tg.sendData(JSON.stringify({action: "load_characters"}));
                 });
             }
+        } else {
+            console.log("No initial data found, using default settings");
+            
+            // Показываем уведомление
+            if (!settingsLoaded) {
+                const notification = document.createElement('div');
+                notification.className = 'notification';
+                notification.textContent = 'Не удалось загрузить настройки. Используются значения по умолчанию.';
+                document.body.appendChild(notification);
+                
+                setTimeout(() => {
+                    document.body.removeChild(notification);
+                }, 3000);
+            }
         }
         
         // Регистрируем обработчик сообщений от бота через WebApp
@@ -200,18 +240,18 @@ function loadInitialData() {
         // Обновляем интерфейс с полученными данными
         renderCharacterList();
         updateCharacterSelect();
-        
-        // Выбираем текущего персонажа если есть
-        if (tg.initDataUnsafe && tg.initDataUnsafe.start_param) {
-            const initialData = JSON.parse(tg.initDataUnsafe.start_param);
-            if (initialData.current_character) {
-                console.log("Selecting current character in UI");
-                const currentCharacter = initialData.current_character;
-                selectCharacterInUI(currentCharacter);
-            }
-        }
     } catch (e) {
         console.error("Error loading initial data:", e);
+        
+        // Показываем уведомление об ошибке
+        const notification = document.createElement('div');
+        notification.className = 'notification';
+        notification.textContent = 'Ошибка при загрузке начальных данных. Пожалуйста, попробуйте позже.';
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+            document.body.removeChild(notification);
+        }, 5000);
     }
 }
 
@@ -245,6 +285,15 @@ function handleBotMessage(message) {
         if (data && data.action === "characters_chunk") {
             console.log(`Processing characters chunk ${data.chunk_index + 1}/${data.total_chunks}`);
             processCharactersChunk(data);
+        }
+        
+        // Process settings data if available
+        if (data && data.action === "settings_update") {
+            console.log("Processing settings update");
+            if (data.settings) {
+                updateUIWithSettings(data.settings);
+                settingsLoaded = true;
+            }
         }
     } catch (e) {
         console.error("Error processing message:", e);
@@ -296,7 +345,7 @@ function updateUIWithSettings(settings) {
             console.log(`Adding new model option: ${settings.model_name}`);
             const option = document.createElement('option');
             option.value = settings.model_name;
-            option.textContent = settings.model_name;
+            option.textContent = getModelDisplayName(settings.model_name);
             modelSelect.appendChild(option);
             modelSelect.value = settings.model_name;
         }
@@ -343,6 +392,46 @@ function updateUIWithSettings(settings) {
     if (settings.enable_image_generation !== undefined) {
         document.getElementById('enable_image_generation').checked = settings.enable_image_generation;
     }
+    
+    // Обновляем зависимости между элементами интерфейса
+    updateStreamingEditVisibility();
+}
+
+// Функция обновления видимости настроек редактирования при потоковой передаче
+function updateStreamingEditVisibility() {
+    const streamingModeCheckbox = document.getElementById('streaming_mode');
+    const streamingEditModeCheckbox = document.getElementById('streaming_edit_mode');
+    const streamingIntervalContainer = document.getElementById('streaming_edit_interval').closest('.field');
+    
+    if (streamingModeCheckbox && streamingEditModeCheckbox && streamingIntervalContainer) {
+        if (!streamingModeCheckbox.checked) {
+            streamingEditModeCheckbox.disabled = true;
+            streamingEditModeCheckbox.checked = false;
+            streamingIntervalContainer.style.display = 'none';
+        } else {
+            streamingEditModeCheckbox.disabled = false;
+            
+            if (streamingEditModeCheckbox.checked) {
+                streamingIntervalContainer.style.display = 'block';
+            } else {
+                streamingIntervalContainer.style.display = 'none';
+            }
+        }
+    }
+}
+
+// Получение отображаемого имени модели
+function getModelDisplayName(modelName) {
+    // Здесь можно добавить псевдонимы для улучшения читаемости
+    const modelDisplayNames = {
+        "gemini-2.0-flash": "Gemini 2.0 Flash",
+        "gemini-2.0-flash-lite": "Gemini 2.0 Flash Lite",
+        "gemini-2.0-flash-thinking-exp-01-21": "Gemini 2.0 Flash Thinking",
+        "gemini-2.5-pro-exp-03-25": "Gemini 2.5 Pro",
+        "gemini-2.0-flash-exp": "Gemini 2.0 Flash Exp"
+    };
+    
+    return modelDisplayNames[modelName] || modelName;
 }
 
 // Выбор персонажа в UI
@@ -433,7 +522,7 @@ function saveSettings() {
         window.settingsSent = true;
         
         // Обновляем уведомление об успешной отправке
-        notification.textContent = 'Настройки отправлены! Пожалуйста, дождитесь подтверждения.';
+        notification.textContent = 'Настройки обновлены! Пожалуйста, дождитесь подтверждения.';
         notification.className = 'notification success';
         
         // WebApp автоматически закроется после вызова sendData()
