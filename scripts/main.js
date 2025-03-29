@@ -2,6 +2,10 @@
 let tg = window.Telegram.WebApp;
 tg.expand();
 
+// Добавим debug-логирование
+console.log("WebApp initializing. SDK version:", tg.version);
+console.log("Initial launch parameters:", tg.initDataUnsafe);
+
 // Глобальные переменные для работы с персонажами
 let currentEditingCharacter = null;
 let characters = [];
@@ -16,6 +20,8 @@ let charactersLoaded = false;
 
 // Инициализация функций при загрузке документа
 document.addEventListener('DOMContentLoaded', function() {
+    console.log("DOM loaded, initializing WebApp UI");
+    
     // Инициализация вкладок
     initTabs();
     
@@ -27,14 +33,28 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Обработчик кнопки сохранения
     document.getElementById('save_button').addEventListener('click', saveSettings);
+    console.log("Save button handler registered");
     
     // Настраиваем обработчик событий для получения данных от Telegram
     tg.onEvent('viewportChanged', handleViewportChanged);
+    
+    // Регистрируем обработчик для событий BackButton
+    tg.BackButton.onClick(handleBackButton);
+    
+    // Логируем состояние WebApp
+    console.log("WebApp initialization completed");
+    console.log("isExpanded:", tg.isExpanded);
+    console.log("colorScheme:", tg.colorScheme);
 });
+
+// Обработчик нажатия кнопки "Назад"
+function handleBackButton() {
+    console.log("Back button pressed");
+    tg.close();
+}
 
 // Обработчик изменения области просмотра (для мобильных устройств)
 function handleViewportChanged(event) {
-    // Может потребоваться для обновления UI при изменении размера экрана
     console.log('Viewport changed:', event);
 }
 
@@ -46,6 +66,7 @@ function initTabs() {
     tabs.forEach(tab => {
         tab.addEventListener('click', () => {
             const tabId = tab.getAttribute('data-tab');
+            console.log(`Tab selected: ${tabId}`);
             
             // Активируем выбранную вкладку
             tabs.forEach(t => t.classList.remove('active'));
@@ -88,13 +109,17 @@ function initSliders() {
 
 // Загрузка списка персонажей
 function loadCharacters() {
+    console.log("Loading characters...");
+    
     // Отображаем персонажей, которые есть в глобальном массиве
     if (characters.length === 0) {
+        console.log("No characters available yet");
         const characterListElement = document.getElementById('character-list');
         if (characterListElement) {
             characterListElement.innerHTML = '<div class="character-item loading">Загрузка персонажей... Пожалуйста, проверьте, есть ли кнопки загрузки в чате.</div>';
         }
     } else {
+        console.log(`Rendering ${characters.length} characters`);
         renderCharacterList();
         charactersLoaded = true;
     }
@@ -114,30 +139,39 @@ function loadCharacters() {
 
 // Получаем текущие настройки и список персонажей
 function loadInitialData() {
+    console.log("Loading initial data");
     try {
         // Если есть параметр startapp, разбираем JSON из него
         if (tg.initDataUnsafe && tg.initDataUnsafe.start_param) {
+            console.log("Start parameter found:", tg.initDataUnsafe.start_param);
+            
             const initialData = JSON.parse(tg.initDataUnsafe.start_param);
+            console.log("Parsed initial data:", initialData);
             
             // Заполняем данные о персонажах, если они есть
             if (initialData.characters) {
+                console.log(`Loading ${initialData.characters.length} characters from initial data`);
                 characters = initialData.characters;
                 charactersLoaded = true;
             }
             
             // Заполняем настройки модели
             if (initialData.settings) {
+                console.log("Loading settings from initial data");
                 const settings = initialData.settings;
+                console.log("Settings:", settings);
                 
                 updateUIWithSettings(settings);
             }
             
             // Если есть текущий персонаж, выбираем его
             if (initialData.current_character) {
+                console.log("Current character found:", initialData.current_character);
                 const currentCharacter = initialData.current_character;
                 
                 // Если персонажа нет в списке, добавляем его
                 if (!characters.some(c => c.name === currentCharacter.name && c.user_created === currentCharacter.user_created)) {
+                    console.log("Adding current character to the list");
                     characters.push({
                         name: currentCharacter.name,
                         user_created: currentCharacter.user_created,
@@ -149,15 +183,18 @@ function loadInitialData() {
             
             // Регистрируем обработчик MainButton
             if (initialData.load_characters) {
+                console.log("Setting up MainButton for character loading");
                 tg.MainButton.text = "Загрузить персонажей";
                 tg.MainButton.isVisible = true;
                 tg.MainButton.onClick(function() {
+                    console.log("MainButton clicked, sending load_characters request");
                     tg.sendData(JSON.stringify({action: "load_characters"}));
                 });
             }
         }
         
         // Регистрируем обработчик сообщений от бота через WebApp
+        console.log("Registering message event handler");
         tg.onEvent('message', handleBotMessage);
         
         // Обновляем интерфейс с полученными данными
@@ -168,12 +205,13 @@ function loadInitialData() {
         if (tg.initDataUnsafe && tg.initDataUnsafe.start_param) {
             const initialData = JSON.parse(tg.initDataUnsafe.start_param);
             if (initialData.current_character) {
+                console.log("Selecting current character in UI");
                 const currentCharacter = initialData.current_character;
                 selectCharacterInUI(currentCharacter);
             }
         }
     } catch (e) {
-        console.error("Ошибка при загрузке начальных данных:", e);
+        console.error("Error loading initial data:", e);
     }
 }
 
@@ -187,19 +225,25 @@ function handleBotMessage(message) {
         
         // Check if this is a callback message with characters data
         if (message.webAppData) {
+            console.log("Message contains webAppData");
             data = JSON.parse(message.webAppData.data);
         }
         // Or if it's a normal message with characters data
         else if (typeof message === 'string') {
+            console.log("Message is a string, trying to parse as JSON");
             data = JSON.parse(message);
         }
         // Or if it's already an object
         else if (typeof message === 'object') {
+            console.log("Message is an object");
             data = message;
         }
         
+        console.log("Parsed message data:", data);
+        
         // Process characters data if available
         if (data && data.action === "characters_chunk") {
+            console.log(`Processing characters chunk ${data.chunk_index + 1}/${data.total_chunks}`);
             processCharactersChunk(data);
         }
     } catch (e) {
@@ -210,8 +254,11 @@ function handleBotMessage(message) {
 // Process a chunk of characters data
 function processCharactersChunk(data) {
     if (data.characters && Array.isArray(data.characters)) {
+        console.log(`Processing ${data.characters.length} characters in chunk ${data.chunk_index + 1}/${data.total_chunks}`);
+        
         // Add these characters to our global array
         characters = [...characters, ...data.characters];
+        console.log(`Total characters after adding chunk: ${characters.length}`);
         
         // Update the UI
         renderCharacterList();
@@ -234,15 +281,19 @@ function processCharactersChunk(data) {
 
 // Обновление UI данными из настроек
 function updateUIWithSettings(settings) {
+    console.log("Updating UI with settings:", settings);
+    
     // Модель
     if (settings.model_name) {
         const modelSelect = document.getElementById('model');
         // Проверяем, существует ли такая опция
         const modelOption = Array.from(modelSelect.options).find(opt => opt.value === settings.model_name);
         if (modelOption) {
+            console.log(`Model option found: ${settings.model_name}`);
             modelSelect.value = settings.model_name;
         } else {
             // Если нет, добавляем новую опцию
+            console.log(`Adding new model option: ${settings.model_name}`);
             const option = document.createElement('option');
             option.value = settings.model_name;
             option.textContent = settings.model_name;
@@ -296,28 +347,34 @@ function updateUIWithSettings(settings) {
 
 // Выбор персонажа в UI
 function selectCharacterInUI(character) {
+    console.log("Selecting character in UI:", character);
     const characterSelect = document.getElementById('character');
     Array.from(characterSelect.options).forEach(option => {
         try {
             const optionData = JSON.parse(option.value || '{}');
             if (optionData.name === character.name && 
                 optionData.user_created === character.user_created) {
+                console.log(`Character option found: ${character.name} (user_created: ${character.user_created})`);
                 option.selected = true;
             }
-        } catch (e) {}
+        } catch (e) {
+            console.error("Error parsing character option:", e);
+        }
     });
 }
 
 // Отправка настроек боту
 function saveSettings() {
+    console.log("Saving settings...");
     const characterValue = document.getElementById('character').value;
     let character = null;
     
     if (characterValue) {
         try {
             character = JSON.parse(characterValue);
+            console.log("Selected character:", character);
         } catch (e) {
-            console.error("Ошибка при разборе значения персонажа:", e);
+            console.error("Error parsing character value:", e);
             
             // Показываем уведомление об ошибке
             const notification = document.createElement('div');
@@ -332,6 +389,7 @@ function saveSettings() {
         }
     }
     
+    // Собираем настройки
     const settings = {
         character: character,
         model_name: document.getElementById('model').value,
@@ -345,15 +403,19 @@ function saveSettings() {
         enable_image_generation: document.getElementById('enable_image_generation').checked
     };
     
+    console.log("Collected settings:", settings);
+    
     // Добавляем созданных/измененных пользовательских персонажей
     const userCreatedCharacters = characters.filter(c => c.user_created);
     if (userCreatedCharacters.length > 0) {
+        console.log(`Adding ${userCreatedCharacters.length} user-created characters to settings`);
         settings.characters = userCreatedCharacters;
     }
     
     try {
         const settingsJson = JSON.stringify(settings);
-        console.log("Отправка настроек в Telegram:", settingsJson);
+        console.log("Settings JSON size:", settingsJson.length, "bytes");
+        console.log("Settings JSON:", settingsJson);
         
         // Показываем уведомление перед отправкой
         const notification = document.createElement('div');
@@ -361,9 +423,14 @@ function saveSettings() {
         notification.textContent = 'Отправка настроек...';
         document.body.appendChild(notification);
         
+        // Устанавливаем флаг для отслеживания успешной отправки
+        window.settingsSent = false;
+        
         // Отправка данных обратно в Telegram
+        console.log("Sending data to Telegram...");
         tg.sendData(settingsJson);
-        console.log("Данные успешно отправлены");
+        console.log("Data sent successfully");
+        window.settingsSent = true;
         
         // Обновляем уведомление об успешной отправке
         notification.textContent = 'Настройки отправлены! Пожалуйста, дождитесь подтверждения.';
@@ -373,9 +440,9 @@ function saveSettings() {
         setTimeout(() => {
             console.log("Closing webapp after delay");
             tg.close();
-        }, 5000);  // Increase to 5 seconds for better reliability
+        }, 5000);  // Увеличено до 5 секунд для лучшей надежности
     } catch (e) {
-        console.error("Ошибка отправки данных:", e);
+        console.error("Error sending data:", e);
         
         // Показываем уведомление об ошибке
         const notification = document.createElement('div');
@@ -388,3 +455,11 @@ function saveSettings() {
         }, 5000);
     }
 }
+
+// Добавляем обработчик событий для проверки статуса отправки при закрытии
+window.addEventListener('beforeunload', function(e) {
+    if (!window.settingsSent) {
+        console.log("WebApp is closing but settings were not sent!");
+        // Возможно, сохранить флаг в localStorage, чтобы показать сообщение при следующем открытии
+    }
+});
