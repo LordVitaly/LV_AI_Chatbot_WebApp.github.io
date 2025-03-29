@@ -318,6 +318,17 @@ function saveSettings() {
             character = JSON.parse(characterValue);
         } catch (e) {
             console.error("Ошибка при разборе значения персонажа:", e);
+            
+            // Показываем уведомление об ошибке
+            const notification = document.createElement('div');
+            notification.className = 'notification';
+            notification.textContent = 'Ошибка при обработке данных персонажа';
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                document.body.removeChild(notification);
+            }, 5000);
+            return;
         }
     }
     
@@ -340,7 +351,35 @@ function saveSettings() {
         settings.characters = userCreatedCharacters;
     }
     
-    // Отправка данных обратно в Telegram
-    tg.sendData(JSON.stringify(settings));
-    tg.close();
+    try {
+        const settingsJson = JSON.stringify(settings);
+        console.log("Отправка настроек в Telegram:", settingsJson);
+        
+        // Показываем уведомление перед отправкой
+        const notification = document.createElement('div');
+        notification.className = 'notification';
+        notification.textContent = 'Отправка настроек...';
+        document.body.appendChild(notification);
+        
+        // Отправка данных обратно в Telegram
+        tg.sendData(settingsJson);
+        console.log("Данные успешно отправлены");
+        
+        // Закрыть webapp через небольшую задержку
+        setTimeout(() => {
+            tg.close();
+        }, 1000);
+    } catch (e) {
+        console.error("Ошибка отправки данных:", e);
+        
+        // Показываем уведомление об ошибке
+        const notification = document.createElement('div');
+        notification.className = 'notification';
+        notification.textContent = 'Ошибка отправки данных: ' + e.message;
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+            document.body.removeChild(notification);
+        }, 5000);
+    }
 }
