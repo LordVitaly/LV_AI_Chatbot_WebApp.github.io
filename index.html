@@ -5,68 +5,159 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
+        /* Основные стили */
         body { 
-            font-family: Arial; 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
             margin: 0; 
-            padding: 16px; 
-            background-color: var(--tg-theme-bg-color, #fff); 
-            color: var(--tg-theme-text-color, #000); 
+            padding: 0; 
+            background-color: var(--tg-theme-bg-color, #f5f5f5); 
+            color: var(--tg-theme-text-color, #000);
+            font-size: 16px;
+            line-height: 1.5;
         }
+        
+        .container {
+            padding: 16px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        h2, h3 {
+            color: var(--tg-theme-text-color, #000);
+            margin-top: 0;
+        }
+        
+        /* Система вкладок */
+        .tabs {
+            display: flex;
+            margin-bottom: 16px;
+            border-bottom: 1px solid var(--tg-theme-hint-color, #ccc);
+        }
+        
+        .tab {
+            padding: 10px 16px;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            flex: 1;
+            text-align: center;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        
+        .tab.active {
+            border-bottom-color: var(--tg-theme-button-color, #3390ec);
+            color: var(--tg-theme-button-color, #3390ec);
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.3s;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        /* Стили карточек */
         .card { 
             padding: 16px; 
             margin-bottom: 16px; 
-            border-radius: 8px; 
-            background-color: var(--tg-theme-secondary-bg-color, #f0f0f0); 
+            border-radius: 12px; 
+            background-color: var(--tg-theme-secondary-bg-color, #fff); 
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
+        
         .field { 
-            margin-bottom: 12px; 
+            margin-bottom: 16px; 
         }
+        
+        .field:last-child {
+            margin-bottom: 0;
+        }
+        
         label { 
             display: block; 
-            margin-bottom: 4px; 
-            font-weight: bold; 
+            margin-bottom: 8px; 
+            font-weight: 500; 
+            color: var(--tg-theme-text-color, #000);
         }
+        
+        /* Поля ввода */
         input, select, textarea { 
             width: 100%; 
-            padding: 8px; 
-            border-radius: 4px; 
-            border: 1px solid #ccc; 
+            padding: 12px; 
+            border-radius: 8px; 
+            border: 1px solid var(--tg-theme-hint-color, #ccc); 
             box-sizing: border-box;
+            font-size: 16px;
+            background-color: var(--tg-theme-bg-color, #fff);
+            color: var(--tg-theme-text-color, #000);
         }
+        
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: var(--tg-theme-button-color, #3390ec);
+        }
+        
+        /* Слайдеры */
         .slider-container {
             display: flex;
             align-items: center;
         }
+        
         .slider-container input {
             flex: 1;
-            margin-right: 8px;
+            margin-right: 12px;
         }
+        
         .slider-value {
-            min-width: 30px;
+            min-width: 40px;
             text-align: right;
+            font-weight: bold;
         }
+        
+        /* Кнопки */
         button { 
             background-color: var(--tg-theme-button-color, #3390ec); 
             color: var(--tg-theme-button-text-color, #fff); 
             border: none; 
-            padding: 10px 16px; 
-            border-radius: 4px; 
+            padding: 12px 16px; 
+            border-radius: 8px; 
             cursor: pointer; 
             width: 100%;
             margin-top: 16px;
             font-weight: bold;
+            font-size: 16px;
+            transition: opacity 0.2s;
         }
+        
+        button:hover {
+            opacity: 0.9;
+        }
+        
+        button:active {
+            opacity: 0.8;
+        }
+        
+        /* Переключатели */
         .toggle {
             position: relative;
             display: inline-block;
-            width: 50px;
-            height: 24px;
+            width: 56px;
+            height: 28px;
         }
+        
         .toggle input {
             opacity: 0;
             width: 0;
             height: 0;
         }
+        
         .toggle-slider {
             position: absolute;
             cursor: pointer;
@@ -74,130 +165,312 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background-color: #ccc;
+            background-color: var(--tg-theme-hint-color, #ccc);
             transition: .4s;
-            border-radius: 24px;
+            border-radius: 28px;
         }
+        
         .toggle-slider:before {
             position: absolute;
             content: "";
-            height: 16px;
-            width: 16px;
+            height: 20px;
+            width: 20px;
             left: 4px;
             bottom: 4px;
             background-color: white;
             transition: .4s;
             border-radius: 50%;
         }
+        
         input:checked + .toggle-slider {
             background-color: var(--tg-theme-button-color, #3390ec);
         }
+        
         input:checked + .toggle-slider:before {
-            transform: translateX(26px);
+            transform: translateX(28px);
         }
+        
         .checkbox-field {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 12px;
+            margin-bottom: 16px;
         }
+        
         .checkbox-field label {
             margin-bottom: 0;
+        }
+        
+        /* Стили вкладки персонажей */
+        .character-list {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-bottom: 16px;
+            border: 1px solid var(--tg-theme-hint-color, #ccc);
+            border-radius: 8px;
+        }
+        
+        .character-item {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--tg-theme-hint-color, #ccc);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .character-item:last-child {
+            border-bottom: none;
+        }
+        
+        .character-item.selected {
+            background-color: rgba(51, 144, 236, 0.1);
+        }
+        
+        .character-name {
+            font-weight: 500;
+        }
+        
+        .character-info {
+            font-size: 14px;
+            color: var(--tg-theme-hint-color, #999);
+        }
+        
+        .character-actions {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .character-edit-form {
+            display: none;
+        }
+        
+        .character-edit-form.active {
+            display: block;
+        }
+        
+        .action-button {
+            background-color: transparent;
+            color: var(--tg-theme-button-color, #3390ec);
+            border: 1px solid var(--tg-theme-button-color, #3390ec);
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-top: 0;
+            font-size: 14px;
+            font-weight: 500;
+            width: auto;
+        }
+        
+        /* Адаптация для мобильных устройств */
+        @media (max-width: 480px) {
+            .container {
+                padding: 12px;
+            }
+            
+            .card {
+                padding: 12px;
+                border-radius: 8px;
+                margin-bottom: 12px;
+            }
+            
+            .field {
+                margin-bottom: 12px;
+            }
+            
+            input, select, textarea {
+                padding: 10px;
+                font-size: 16px;
+            }
+            
+            .tab {
+                padding: 8px 12px;
+                font-size: 14px;
+            }
+            
+            button {
+                padding: 10px 14px;
+            }
+            
+            .character-actions {
+                flex-direction: column;
+                gap: 6px;
+            }
+            
+            .character-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+            
+            .character-actions {
+                width: 100%;
+                display: flex;
+                flex-direction: row;
+                justify-content: space-between;
+            }
         }
     </style>
 </head>
 <body>
-    <h2>Настройки бота</h2>
-    
-    <div class="card">
-        <h3>Персонаж</h3>
-        <div class="field">
-            <label for="character">Выберите персонажа</label>
-            <select id="character">
-                <option value="">Загрузка персонажей...</option>
-            </select>
+    <div class="container">
+        <h2>Настройки бота</h2>
+        
+        <div class="tabs">
+            <div class="tab active" data-tab="settings">Настройки</div>
+            <div class="tab" data-tab="characters">Персонажи</div>
         </div>
+        
+        <!-- Вкладка настроек -->
+        <div id="settings" class="tab-content active">
+            <div class="card">
+                <h3>Персонаж</h3>
+                <div class="field">
+                    <label for="character">Выберите персонажа</label>
+                    <select id="character">
+                        <option value="">Загрузка персонажей...</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>Настройки модели</h3>
+                <div class="field">
+                    <label for="model">Модель</label>
+                    <select id="model">
+                        <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                        <option value="gemini-2.0-pro">Gemini 2.0 Pro</option>
+                        <option value="gemini-2.0-ultra">Gemini 2.0 Ultra</option>
+                        <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash Experimental</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="temperature">Температура (0.0 - 1.0)</label>
+                    <div class="slider-container">
+                        <input type="range" id="temperature" min="0" max="1" step="0.05" value="0.7">
+                        <span id="temp_value" class="slider-value">0.7</span>
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="top_p">Top-P (0.0 - 1.0)</label>
+                    <div class="slider-container">
+                        <input type="range" id="top_p" min="0" max="1" step="0.05" value="0.95">
+                        <span id="top_p_value" class="slider-value">0.95</span>
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="top_k">Top-K (1 - 40)</label>
+                    <div class="slider-container">
+                        <input type="range" id="top_k" min="1" max="40" step="1" value="1">
+                        <span id="top_k_value" class="slider-value">1</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>Настройки ответов</h3>
+                <div class="checkbox-field">
+                    <label for="streaming_mode">Потоковый режим</label>
+                    <label class="toggle">
+                        <input type="checkbox" id="streaming_mode" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="checkbox-field">
+                    <label for="streaming_edit_mode">Редактирование в потоковом режиме</label>
+                    <label class="toggle">
+                        <input type="checkbox" id="streaming_edit_mode" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="field">
+                    <label for="streaming_edit_interval">Интервал обновления (секунды)</label>
+                    <div class="slider-container">
+                        <input type="range" id="streaming_edit_interval" min="0.5" max="5" step="0.5" value="2.0">
+                        <span id="streaming_interval_value" class="slider-value">2.0</span>
+                    </div>
+                </div>
+                <div class="checkbox-field">
+                    <label for="enable_message_buttons">Кнопки в сообщениях</label>
+                    <label class="toggle">
+                        <input type="checkbox" id="enable_message_buttons" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="checkbox-field">
+                    <label for="enable_image_generation">Генерация изображений</label>
+                    <label class="toggle">
+                        <input type="checkbox" id="enable_image_generation" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Вкладка персонажей -->
+        <div id="characters" class="tab-content">
+            <div class="card">
+                <h3>Доступные персонажи</h3>
+                <div id="character-list" class="character-list">
+                    <!-- Персонажи будут добавлены через JavaScript -->
+                </div>
+                
+                <button id="new_character_button" class="action-button" style="width: auto; margin-top: 12px;">Создать нового персонажа</button>
+            </div>
+            
+            <div id="character_edit" class="card character-edit-form">
+                <h3 id="character_edit_title">Создание персонажа</h3>
+                <div class="field">
+                    <label for="character_name">Имя персонажа</label>
+                    <input type="text" id="character_name" placeholder="Введите имя персонажа">
+                </div>
+                <div class="field">
+                    <label for="character_description">Описание</label>
+                    <textarea id="character_description" rows="4" placeholder="Введите описание персонажа"></textarea>
+                </div>
+                <div class="field">
+                    <label for="character_greeting">Приветствие</label>
+                    <textarea id="character_greeting" rows="3" placeholder="Введите приветствие персонажа"></textarea>
+                </div>
+                <div>
+                    <button id="save_character_button">Сохранить персонажа</button>
+                    <button id="cancel_character_edit" class="action-button" style="margin-top: 8px;">Отмена</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Кнопка сохранения настроек -->
+        <button id="save_button">Сохранить настройки</button>
     </div>
-    
-    <div class="card">
-        <h3>Настройки модели</h3>
-        <div class="field">
-            <label for="model">Модель</label>
-            <select id="model">
-                <option value="gemini-2.0-flash-001">Gemini 2.0 Flash</option>
-                <option value="gemini-2.0-pro-001">Gemini 2.0 Pro</option>
-                <option value="gemini-2.0-ultra-001">Gemini 2.0 Ultra</option>
-                <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash Experimental</option>
-            </select>
-        </div>
-        <div class="field">
-            <label for="temperature">Температура (0.0 - 1.0)</label>
-            <div class="slider-container">
-                <input type="range" id="temperature" min="0" max="1" step="0.05" value="0.7">
-                <span id="temp_value" class="slider-value">0.7</span>
-            </div>
-        </div>
-        <div class="field">
-            <label for="top_p">Top-P (0.0 - 1.0)</label>
-            <div class="slider-container">
-                <input type="range" id="top_p" min="0" max="1" step="0.05" value="0.95">
-                <span id="top_p_value" class="slider-value">0.95</span>
-            </div>
-        </div>
-        <div class="field">
-            <label for="top_k">Top-K (1 - 40)</label>
-            <div class="slider-container">
-                <input type="range" id="top_k" min="1" max="40" step="1" value="1">
-                <span id="top_k_value" class="slider-value">1</span>
-            </div>
-        </div>
-    </div>
-    
-    <div class="card">
-        <h3>Настройки ответов</h3>
-        <div class="checkbox-field">
-            <label for="streaming_mode">Потоковый режим</label>
-            <label class="toggle">
-                <input type="checkbox" id="streaming_mode" checked>
-                <span class="toggle-slider"></span>
-            </label>
-        </div>
-        <div class="checkbox-field">
-            <label for="streaming_edit_mode">Редактирование в потоковом режиме</label>
-            <label class="toggle">
-                <input type="checkbox" id="streaming_edit_mode" checked>
-                <span class="toggle-slider"></span>
-            </label>
-        </div>
-        <div class="field">
-            <label for="streaming_edit_interval">Интервал обновления (секунды)</label>
-            <div class="slider-container">
-                <input type="range" id="streaming_edit_interval" min="0.5" max="5" step="0.5" value="2.0">
-                <span id="streaming_interval_value" class="slider-value">2.0</span>
-            </div>
-        </div>
-        <div class="checkbox-field">
-            <label for="enable_message_buttons">Кнопки в сообщениях</label>
-            <label class="toggle">
-                <input type="checkbox" id="enable_message_buttons" checked>
-                <span class="toggle-slider"></span>
-            </label>
-        </div>
-        <div class="checkbox-field">
-            <label for="enable_image_generation">Генерация изображений</label>
-            <label class="toggle">
-                <input type="checkbox" id="enable_image_generation" checked>
-                <span class="toggle-slider"></span>
-            </label>
-        </div>
-    </div>
-    
-    <button id="save_button">Сохранить настройки</button>
     
     <script>
         // Инициализация Telegram Mini App
         let tg = window.Telegram.WebApp;
         tg.expand();
+        
+        // Глобальные переменные для работы с персонажами
+        let currentEditingCharacter = null;
+        let characters = [];
+        
+        // Вкладки
+        const tabs = document.querySelectorAll('.tab');
+        const tabContents = document.querySelectorAll('.tab-content');
+        
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                const tabId = tab.getAttribute('data-tab');
+                
+                // Активируем выбранную вкладку
+                tabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                
+                // Показываем содержимое выбранной вкладки
+                tabContents.forEach(content => {
+                    content.classList.remove('active');
+                    if (content.id === tabId) {
+                        content.classList.add('active');
+                    }
+                });
+            });
+        });
         
         // Обработчики для отображения значений слайдеров
         document.getElementById('temperature').addEventListener('input', function() {
@@ -216,6 +489,199 @@
             document.getElementById('streaming_interval_value').textContent = this.value;
         });
         
+        // Управление формой редактирования персонажа
+        const characterEditForm = document.getElementById('character_edit');
+        const newCharacterButton = document.getElementById('new_character_button');
+        const saveCharacterButton = document.getElementById('save_character_button');
+        const cancelCharacterEditButton = document.getElementById('cancel_character_edit');
+        
+        newCharacterButton.addEventListener('click', () => {
+            document.getElementById('character_edit_title').textContent = 'Создание персонажа';
+            document.getElementById('character_name').value = '';
+            document.getElementById('character_description').value = '';
+            document.getElementById('character_greeting').value = 'Привет! Я новый персонаж.';
+            document.getElementById('character_name').disabled = false;
+            
+            currentEditingCharacter = null;
+            characterEditForm.classList.add('active');
+        });
+        
+        cancelCharacterEditButton.addEventListener('click', () => {
+            characterEditForm.classList.remove('active');
+            currentEditingCharacter = null;
+        });
+        
+        saveCharacterButton.addEventListener('click', () => {
+            const name = document.getElementById('character_name').value.trim();
+            const description = document.getElementById('character_description').value.trim();
+            const greeting = document.getElementById('character_greeting').value.trim();
+            
+            if (!name) {
+                alert('Имя персонажа не может быть пустым');
+                return;
+            }
+            
+            if (greeting === '') {
+                document.getElementById('character_greeting').value = 'Привет!';
+            }
+            
+            if (currentEditingCharacter) {
+                // Обновляем существующего персонажа
+                const index = characters.findIndex(c => c.name === currentEditingCharacter.name);
+                if (index !== -1) {
+                    characters[index].description = description;
+                    characters[index].greeting = greeting;
+                }
+            } else {
+                // Проверяем, существует ли персонаж с таким именем
+                const existingCharacter = characters.find(c => c.name === name);
+                if (existingCharacter) {
+                    alert(`Персонаж с именем "${name}" уже существует`);
+                    return;
+                }
+                
+                // Создаем нового персонажа
+                characters.push({
+                    name: name,
+                    description: description,
+                    greeting: greeting || 'Привет!',
+                    user_created: true
+                });
+            }
+            
+            // Обновляем список персонажей
+            renderCharacterList();
+            updateCharacterSelect();
+            
+            // Скрываем форму редактирования
+            characterEditForm.classList.remove('active');
+            currentEditingCharacter = null;
+        });
+        
+        // Отображение списка персонажей
+        function renderCharacterList() {
+            const characterListElement = document.getElementById('character-list');
+            characterListElement.innerHTML = '';
+            
+            if (characters.length === 0) {
+                characterListElement.innerHTML = '<div class="character-item">Нет доступных персонажей</div>';
+                return;
+            }
+            
+            characters.forEach(character => {
+                const characterItem = document.createElement('div');
+                characterItem.className = 'character-item';
+                
+                // Проверяем, является ли персонаж текущим выбранным
+                const characterSelect = document.getElementById('character');
+                const selectedCharacterValue = characterSelect.value;
+                let isSelected = false;
+                
+                try {
+                    const selectedCharacter = JSON.parse(selectedCharacterValue);
+                    isSelected = selectedCharacter.name === character.name && 
+                               selectedCharacter.user_created === character.user_created;
+                } catch (e) {}
+                
+                if (isSelected) {
+                    characterItem.classList.add('selected');
+                }
+                
+                const truncatedDescription = character.description && character.description.length > 50 
+                    ? character.description.substring(0, 50) + '...' 
+                    : character.description || 'Нет описания';
+                
+                characterItem.innerHTML = `
+                    <div>
+                        <div class="character-name">${character.name}</div>
+                        <div class="character-info">${character.user_created ? 'Пользовательский' : 'Системный'}</div>
+                        <div class="character-info">${truncatedDescription}</div>
+                    </div>
+                    <div class="character-actions">
+                        ${character.user_created ? `<button class="action-button edit-character" data-name="${character.name}">Изменить</button>` : ''}
+                        <button class="action-button select-character" data-name="${character.name}" data-user-created="${character.user_created}">Выбрать</button>
+                    </div>
+                `;
+                
+                characterListElement.appendChild(characterItem);
+            });
+            
+            // Добавляем обработчики событий для кнопок
+            document.querySelectorAll('.edit-character').forEach(button => {
+                button.addEventListener('click', event => {
+                    const characterName = event.target.dataset.name;
+                    const character = characters.find(c => c.name === characterName);
+                    
+                    if (character && character.user_created) {
+                        document.getElementById('character_edit_title').textContent = 'Редактирование персонажа';
+                        document.getElementById('character_name').value = character.name;
+                        document.getElementById('character_description').value = character.description || '';
+                        document.getElementById('character_greeting').value = character.greeting || 'Привет!';
+                        document.getElementById('character_name').disabled = true;
+                        
+                        currentEditingCharacter = character;
+                        characterEditForm.classList.add('active');
+                    }
+                });
+            });
+            
+            document.querySelectorAll('.select-character').forEach(button => {
+                button.addEventListener('click', event => {
+                    const characterName = event.target.dataset.name;
+                    const userCreated = event.target.dataset.userCreated === 'true';
+                    const character = characters.find(c => c.name === characterName);
+                    
+                    if (character) {
+                        const characterSelect = document.getElementById('character');
+                        
+                        // Находим опцию с соответствующим именем персонажа
+                        Array.from(characterSelect.options).forEach(option => {
+                            try {
+                                const optionData = JSON.parse(option.value || '{}');
+                                if (optionData.name === characterName && optionData.user_created === userCreated) {
+                                    option.selected = true;
+                                    
+                                    // Обновляем выделение в списке персонажей
+                                    document.querySelectorAll('.character-item').forEach(item => {
+                                        item.classList.remove('selected');
+                                    });
+                                    event.target.closest('.character-item').classList.add('selected');
+                                    
+                                    // Переключаемся на вкладку настроек
+                                    tabs[0].click();
+                                }
+                            } catch (e) {}
+                        });
+                    }
+                });
+            });
+        }
+        
+        // Обновляем выпадающий список персонажей
+        function updateCharacterSelect() {
+            const characterSelect = document.getElementById('character');
+            const selectedValue = characterSelect.value;
+            let selectedOption = null;
+            
+            try {
+                selectedOption = JSON.parse(selectedValue);
+            } catch (e) {}
+            
+            characterSelect.innerHTML = '';
+            
+            characters.forEach(char => {
+                const option = document.createElement('option');
+                option.value = JSON.stringify({name: char.name, user_created: char.user_created});
+                option.textContent = char.name + (char.user_created ? ' [Пользовательский]' : '');
+                
+                if (selectedOption && selectedOption.name === char.name && selectedOption.user_created === char.user_created) {
+                    option.selected = true;
+                }
+                
+                characterSelect.appendChild(option);
+            });
+        }
+        
         // Получаем текущие настройки и список персонажей
         function loadInitialData() {
             if (tg.initDataUnsafe && tg.initDataUnsafe.start_param) {
@@ -225,6 +691,9 @@
                     
                     // Заполняем данные о персонажах
                     if (initialData.characters) {
+                        characters = initialData.characters;
+                        renderCharacterList();
+                        
                         const characterSelect = document.getElementById('character');
                         characterSelect.innerHTML = '';
                         
@@ -328,6 +797,12 @@
                 enable_message_buttons: document.getElementById('enable_message_buttons').checked,
                 enable_image_generation: document.getElementById('enable_image_generation').checked
             };
+            
+            // Добавляем созданных/измененных персонажей
+            const userCreatedCharacters = characters.filter(c => c.user_created);
+            if (userCreatedCharacters.length > 0) {
+                settings.characters = userCreatedCharacters;
+            }
             
             // Отправка данных обратно в Telegram
             tg.sendData(JSON.stringify(settings));
