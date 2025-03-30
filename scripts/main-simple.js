@@ -10,11 +10,15 @@ console.log("Initial launch parameters:", tg.initDataUnsafe);
 let characterNames = []; // Имена персонажей
 let isEditingCharacter = false;
 let currentEditingCharacter = null;
+let currentUserId = 'default';
 
 // Константы для валидации
 const CHARACTER_NAME_LIMIT = 50;
 const CHARACTER_DESCRIPTION_LIMIT = 1000;
 const CHARACTER_GREETING_LIMIT = 500;
+
+// API URL
+const API_BASE_URL = "/api";
 
 // Инициализация функций при загрузке документа
 document.addEventListener('DOMContentLoaded', function() {
@@ -35,8 +39,15 @@ document.addEventListener('DOMContentLoaded', function() {
     // Регистрируем обработчик для событий BackButton
     tg.BackButton.onClick(handleBackButton);
     
-    // Запрашиваем персонажей через WebApp
-    requestCharactersList();
+    // Параметры из URL
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('user_id')) {
+        currentUserId = urlParams.get('user_id');
+        console.log("User ID from URL:", currentUserId);
+    }
+    
+    // Запрашиваем персонажей через API
+    fetchCharacterList();
 });
 
 // Инициализация всех компонентов интерфейса
@@ -57,67 +68,82 @@ function initComponents() {
     console.log("Save button handler registered");
 }
 
-// Запрос списка персонажей
-function requestCharactersList() {
-    console.log("Requesting character list");
+// Запрос списка персонажей через API
+async function fetchCharacterList() {
+    console.log("Fetching character list from API");
     showLoadingIndicator("Запрос списка персонажей...");
     
-    // Отправляем запрос через WebApp
-    const request = {
-        action: 'get_character_list'
-    };
-    
-    tg.WebApp.sendData(JSON.stringify(request));
-    console.log("Character list request sent");
-    
-    // Обработчик сообщений от бота
-    tg.WebApp.onEvent('message', function(message) {
-        console.log("Received message from Telegram:", message);
+    try {
+        const url = `${API_BASE_URL}/characters?user_id=${currentUserId}`;
+        console.log("Fetching from URL:", url);
         
-        try {
-            // Пытаемся распарсить JSON
-            const data = JSON.parse(message);
-            
-            if (data.action === 'character_list_response') {
-                console.log("Received character list response");
-                processCharacterList(data.data);
-            } else if (data.action === 'character_details_response') {
-                console.log("Received character details response");
-                processCharacterDetails(data.data);
-            }
-        } catch (e) {
-            console.error("Error parsing message:", e);
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+            throw new Error(`API returned status ${response.status}`);
         }
-    });
-}
-
-// Обработка списка персонажей
-function processCharacterList(data) {
-    console.log("Processing character list data:", data);
-    hideLoadingIndicator();
-    
-    if (data && data.character_names) {
-        characterNames = data.character_names;
+        
+        const result = await response.json();
+        console.log("Character list response:", result);
+        
+        if (!result.success) {
+            throw new Error(result.error || "Unknown error");
+        }
+        
+        // Обработка полученных данных
+        if (result.data && result.data.character_names) {
+            characterNames = result.data.character_names;
+            
+            // Обновляем UI
+            renderCharacterList();
+            updateCharacterSelect();
+        }
+        
+        hideLoadingIndicator();
+    } catch (e) {
+        console.error("Error fetching character list:", e);
+        hideLoadingIndicator();
+        showNotification('Ошибка при загрузке списка персонажей: ' + e.message, 'error');
+        
+        // Устанавливаем пустой список в случае ошибки
+        characterNames = [];
         renderCharacterList();
         updateCharacterSelect();
-    } else {
-        console.error("Invalid character list data format");
-        showNotification('Некорректный формат данных персонажей', 'error');
     }
 }
 
-// Запрос данных персонажа
-function requestCharacterDetails(name) {
-    console.log("Requesting character details:", name);
+// Запрос данных персонажа через API
+async function fetchCharacterDetails(name) {
+    console.log("Fetching character details:", name);
     showLoadingIndicator("Загрузка данных персонажа...");
     
-    const request = {
-        action: 'get_character_details',
-        name: name
-    };
-    
-    tg.WebApp.sendData(JSON.stringify(request));
-    console.log("Character details request sent");
+    try {
+        const url = `${API_BASE_URL}/characters/${encodeURIComponent(name)}?user_id=${currentUserId}`;
+        console.log("Fetching from URL:", url);
+        
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+            throw new Error(`API returned status ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log("Character details response:", result);
+        
+        if (!result.success) {
+            throw new Error(result.error || "Unknown error");
+        }
+        
+        // Обработка полученных данных
+        if (result.data) {
+            processCharacterDetails(result.data);
+        }
+        
+    } catch (e) {
+        console.error("Error fetching character details:", e);
+        hideLoadingIndicator();
+        showNotification('Ошибка при загрузке данных персонажа: ' + e.message, 'error');
+    }
 }
 
 // Обработка данных персонажа
@@ -209,7 +235,7 @@ function addCharacterButtonHandlers() {
             const characterName = event.target.dataset.name;
             if (characterName) {
                 // Запрашиваем данные персонажа для редактирования
-                requestCharacterDetails(characterName);
+                fetchCharacterDetails(characterName);
             }
         });
     });
@@ -355,7 +381,7 @@ function hideLoadingIndicator() {
 }
 
 // Функция сохранения персонажа
-function saveCharacter() {
+async function saveCharacter() {
     const name = document.getElementById('character_name').value.trim();
     const description = document.getElementById('character_description').value.trim();
     const greeting = document.getElementById('character_greeting').value.trim();
@@ -390,36 +416,67 @@ function saveCharacter() {
         greeting: finalGreeting
     };
     
-    // Отправляем запрос на сохранение
-    const saveData = {
-        action: 'save_character',
-        editedCharacter: characterData
-    };
-    
-    console.log("Sending character save request:", saveData);
+    console.log("Saving character:", characterData);
     showLoadingIndicator('Сохранение персонажа...');
     
-    window.Telegram.WebApp.sendData(JSON.stringify(saveData));
-    console.log("Character save request sent");
-    
-    // Скрываем форму редактирования
-    document.getElementById('character_edit').classList.remove('active');
-    isEditingCharacter = false;
-    currentEditingCharacter = null;
-    
-    // Скрываем кнопку "Назад"
-    tg.BackButton.hide();
-    
-    // Перезапрашиваем список персонажей
-    setTimeout(() => {
+    try {
+        // Сохраняем персонажа через API
+        const url = `${API_BASE_URL}/characters?user_id=${currentUserId}`;
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(characterData)
+        });
+        
+        if (!response.ok) {
+            throw new Error(`API returned status ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+            throw new Error(result.error || "Unknown error");
+        }
+        
+        console.log("Character saved successfully via API");
+        
+        // Отправляем данные в Telegram для обновления настроек бота
+        const saveData = {
+            action: 'save_character',
+            editedCharacter: characterData
+        };
+        
+        window.Telegram.WebApp.sendData(JSON.stringify(saveData));
+        console.log("Character save request sent to Telegram");
+        
+        // Скрываем форму редактирования
+        document.getElementById('character_edit').classList.remove('active');
+        isEditingCharacter = false;
+        currentEditingCharacter = null;
+        
+        // Скрываем кнопку "Назад"
+        tg.BackButton.hide();
+        
+        // Обновляем список персонажей
+        setTimeout(() => {
+            hideLoadingIndicator();
+            fetchCharacterList();
+        }, 1000);
+        
+    } catch (e) {
+        console.error("Error saving character:", e);
         hideLoadingIndicator();
-        requestCharactersList();
-    }, 1000);
+        showNotification('Ошибка при сохранении персонажа: ' + e.message, 'error');
+    }
 }
 
 // Отправка настроек боту
-function saveSettings() {
+async function saveSettings() {
     console.log("Saving settings...");
+    showLoadingIndicator('Отправка настроек...');
+    
     const characterValue = document.getElementById('character').value;
     let character = null;
     
@@ -429,6 +486,7 @@ function saveSettings() {
             console.log("Selected character:", character);
         } catch (e) {
             console.error("Error parsing character value:", e);
+            hideLoadingIndicator();
             showNotification('Ошибка при обработке данных персонажа', 'error');
             return;
         }
@@ -436,7 +494,6 @@ function saveSettings() {
     
     // Собираем настройки
     const settings = {
-        action: 'save_settings',
         character: character,
         model_name: document.getElementById('model').value,
         temperature: parseFloat(document.getElementById('temperature').value),
@@ -449,24 +506,45 @@ function saveSettings() {
         enable_image_generation: document.getElementById('enable_image_generation').checked
     };
     
-    console.log("Collected settings:", settings);
-    
     try {
-        showLoadingIndicator('Отправка настроек...');
+        // Сохраняем настройки через API
+        const url = `${API_BASE_URL}/settings?user_id=${currentUserId}`;
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(settings)
+        });
         
-        // Преобразуем в JSON
-        const settingsJson = JSON.stringify(settings);
-        console.log("Settings JSON size:", settingsJson.length, "bytes");
+        if (!response.ok) {
+            throw new Error(`API returned status ${response.status}`);
+        }
         
-        // Отправка данных обратно в Telegram через sendData
-        window.Telegram.WebApp.sendData(settingsJson);
-        console.log("Settings sent");
+        const result = await response.json();
         
-        // WebApp автоматически закроется после вызова sendData()
+        if (!result.success) {
+            throw new Error(result.error || "Unknown error");
+        }
+        
+        console.log("Settings saved successfully via API");
+        
+        // Отправляем данные в Telegram для обновления настроек бота
+        const settingsData = {
+            action: 'save_settings',
+            ...settings
+        };
+        
+        window.Telegram.WebApp.sendData(JSON.stringify(settingsData));
+        console.log("Settings sent to Telegram");
+        
+        // Показываем уведомление об успешном сохранении
+        hideLoadingIndicator();
+        showNotification('Настройки успешно сохранены', 'success');
         
     } catch (e) {
-        console.error("Error sending settings:", e);
+        console.error("Error saving settings:", e);
         hideLoadingIndicator();
-        showNotification('Ошибка отправки настроек: ' + e.message, 'error');
+        showNotification('Ошибка при сохранении настроек: ' + e.message, 'error');
     }
 }
