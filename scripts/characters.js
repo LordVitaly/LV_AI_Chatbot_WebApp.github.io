@@ -1,10 +1,7 @@
 // Инициализация обработчиков вкладки персонажей
-document.addEventListener('DOMContentLoaded', function() {
-    initCharactersTab();
-});
-
-// Инициализация вкладки персонажей
 function initCharactersTab() {
+    console.log("Initializing characters tab");
+    
     const characterEditForm = document.getElementById('character_edit');
     const newCharacterButton = document.getElementById('new_character_button');
     const saveCharacterButton = document.getElementById('save_character_button');
@@ -79,7 +76,7 @@ function saveCharacter() {
     // Отправляем данные боту
     try {
         console.log("Sending character save request:", saveData);
-        showNotification('Сохранение персонажа...', 'info');
+        showLoadingIndicator('Сохранение персонажа...');
         
         window.Telegram.WebApp.sendData(JSON.stringify(saveData));
         console.log("Character save request sent");
@@ -99,7 +96,98 @@ function saveCharacter() {
         
     } catch (e) {
         console.error("Error saving character:", e);
+        hideLoadingIndicator();
         showNotification('Ошибка при сохранении персонажа', 'error');
+    }
+}
+
+// Запрос деталей персонажа
+function requestCharacterDetails(name) {
+    console.log(`Requesting details for character: ${name}`);
+    showLoadingIndicator(`Загрузка данных персонажа ${name}...`);
+    
+    try {
+        // Отправляем запрос на получение деталей
+        const request = {
+            action: 'get_character_details',
+            name: name
+        };
+        
+        window.Telegram.WebApp.sendData(JSON.stringify(request));
+        console.log("Character details request sent");
+    } catch (e) {
+        console.error("Error requesting character details:", e);
+        hideLoadingIndicator();
+        showNotification('Ошибка при запросе данных персонажа', 'error');
+    }
+}
+
+// Обработка чанка с данными персонажа
+function processCharacterDetailsChunk(data) {
+    const { name, chunk_index, total_chunks, greeting, description_part } = data;
+    
+    if (!name) {
+        console.error("Character name is missing in chunk data");
+        return;
+    }
+    
+    console.log(`Processing character details chunk ${chunk_index + 1}/${total_chunks} for ${name}`);
+    
+    // Инициализируем буфер для этого персонажа, если его еще нет
+    if (!window.characterDetailBuffer[name]) {
+        window.characterDetailBuffer[name] = {
+            descriptionParts: new Array(total_chunks),
+            receivedChunks: 0,
+            totalChunks: total_chunks,
+            greeting: null
+        };
+    }
+    
+    const buffer = window.characterDetailBuffer[name];
+    
+    // Сохраняем часть описания
+    buffer.descriptionParts[chunk_index] = description_part;
+    
+    // Сохраняем приветствие, если оно есть (обычно только в первом чанке)
+    if (greeting !== undefined && greeting !== null) {
+        buffer.greeting = greeting;
+    }
+    
+    // Увеличиваем счетчик полученных чанков
+    buffer.receivedChunks++;
+    
+    // Если получили все чанки - собираем полные данные
+    if (buffer.receivedChunks === buffer.totalChunks) {
+        console.log(`All ${total_chunks} chunks received for ${name}, assembling full data`);
+        
+        // Собираем полное описание из частей
+        const fullDescription = buffer.descriptionParts.join('');
+        
+        // Заполняем форму редактирования
+        document.getElementById('character_edit_title').textContent = 'Редактирование персонажа';
+        document.getElementById('character_name').value = name;
+        document.getElementById('character_name').disabled = true; // Имя нельзя менять при редактировании
+        document.getElementById('character_description').value = fullDescription;
+        document.getElementById('character_greeting').value = buffer.greeting || '';
+        
+        // Показываем форму редактирования
+        document.getElementById('character_edit').classList.add('active');
+        
+        // Переключаемся на вкладку персонажей
+        document.querySelectorAll('.tab')[1].click();
+        
+        // Скрываем индикатор загрузки
+        hideLoadingIndicator();
+        
+        // Устанавливаем флаг редактирования
+        isEditingCharacter = true;
+        currentEditingCharacter = { name: name };
+        
+        // Очищаем буфер для этого персонажа
+        delete window.characterDetailBuffer[name];
+    } else {
+        // Обновляем индикатор загрузки с прогрессом
+        showLoadingIndicator(`Загрузка персонажа ${name}... (${buffer.receivedChunks}/${buffer.totalChunks})`);
     }
 }
 
