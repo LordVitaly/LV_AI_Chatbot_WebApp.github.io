@@ -20,12 +20,14 @@ function initCharactersTab() {
         
         currentEditingCharacter = null;
         characterEditForm.classList.add('active');
+        isEditingCharacter = true;
     });
     
     // Обработчик кнопки отмены редактирования
     cancelCharacterEditButton.addEventListener('click', () => {
         characterEditForm.classList.remove('active');
         currentEditingCharacter = null;
+        isEditingCharacter = false;
     });
     
     // Обработчик кнопки сохранения персонажа
@@ -39,61 +41,66 @@ function saveCharacter() {
     const greeting = document.getElementById('character_greeting').value.trim();
     
     if (!name) {
-        alert('Имя персонажа не может быть пустым');
+        showNotification('Имя персонажа не может быть пустым', 'error');
         return;
     }
     
     if (name.length > CHARACTER_NAME_LIMIT) {
-        alert(`Имя персонажа не может быть длиннее ${CHARACTER_NAME_LIMIT} символов`);
+        showNotification(`Имя персонажа не может быть длиннее ${CHARACTER_NAME_LIMIT} символов`, 'error');
         return;
     }
     
     if (description.length > CHARACTER_DESCRIPTION_LIMIT) {
-        alert(`Описание персонажа не может быть длиннее ${CHARACTER_DESCRIPTION_LIMIT} символов`);
+        showNotification(`Описание персонажа не может быть длиннее ${CHARACTER_DESCRIPTION_LIMIT} символов`, 'error');
         return;
     }
     
     if (greeting.length > CHARACTER_GREETING_LIMIT) {
-        alert(`Приветствие персонажа не может быть длиннее ${CHARACTER_GREETING_LIMIT} символов`);
+        showNotification(`Приветствие персонажа не может быть длиннее ${CHARACTER_GREETING_LIMIT} символов`, 'error');
         return;
     }
     
     // Если поле приветствия пустое, устанавливаем дефолтное значение
     const finalGreeting = greeting === '' ? 'Привет!' : greeting;
     
-    if (currentEditingCharacter) {
-        // Обновляем существующего персонажа
-        const index = characters.findIndex(c => c.name === currentEditingCharacter.name && 
-                                             c.user_created === currentEditingCharacter.user_created);
-        if (index !== -1) {
-            characters[index].description = description;
-            characters[index].greeting = finalGreeting;
-        }
-    } else {
-        // Проверяем, существует ли персонаж с таким именем
-        const existingCharacter = characters.find(c => c.name === name);
-        if (existingCharacter) {
-            alert(`Персонаж с именем "${name}" уже существует`);
-            return;
+    // Создаем данные персонажа
+    const characterData = {
+        name: name,
+        description: description,
+        greeting: finalGreeting
+    };
+    
+    // Собираем данные для сохранения
+    const saveData = {
+        action: 'save_character',
+        editedCharacter: characterData
+    };
+    
+    // Отправляем данные боту
+    try {
+        console.log("Sending character save request:", saveData);
+        showNotification('Сохранение персонажа...', 'info');
+        
+        window.Telegram.WebApp.sendData(JSON.stringify(saveData));
+        console.log("Character save request sent");
+        
+        // Скрываем форму редактирования
+        document.getElementById('character_edit').classList.remove('active');
+        isEditingCharacter = false;
+        currentEditingCharacter = null;
+        
+        // Обновляем список персонажей, если это новый персонаж
+        const existingIndex = characterNames.findIndex(c => c.name === name);
+        if (existingIndex === -1) {
+            characterNames.push({ name: name });
+            renderCharacterList();
+            updateCharacterSelect();
         }
         
-        // Создаем нового персонажа
-        characters.push({
-            name: name,
-            description: description,
-            greeting: finalGreeting,
-            user_created: true,
-            is_ai_generated: false
-        });
+    } catch (e) {
+        console.error("Error saving character:", e);
+        showNotification('Ошибка при сохранении персонажа', 'error');
     }
-    
-    // Обновляем список персонажей
-    renderCharacterList();
-    updateCharacterSelect();
-    
-    // Скрываем форму редактирования
-    document.getElementById('character_edit').classList.remove('active');
-    currentEditingCharacter = null;
 }
 
 // Отображение списка персонажей
@@ -103,15 +110,15 @@ function renderCharacterList() {
     
     characterListElement.innerHTML = '';
     
-    if (characters.length === 0) {
+    if (characterNames.length === 0) {
         characterListElement.innerHTML = '<div class="character-item">Нет доступных персонажей</div>';
         return;
     }
     
     // Сортируем персонажей по имени
-    characters.sort((a, b) => a.name.localeCompare(b.name));
+    characterNames.sort((a, b) => a.name.localeCompare(b.name));
     
-    characters.forEach(character => {
+    characterNames.forEach(character => {
         const characterItem = document.createElement('div');
         characterItem.className = 'character-item';
         
@@ -122,27 +129,20 @@ function renderCharacterList() {
         
         try {
             const selectedCharacter = JSON.parse(selectedCharacterValue);
-            isSelected = selectedCharacter.name === character.name && 
-                       selectedCharacter.user_created === character.user_created;
+            isSelected = selectedCharacter.name === character.name;
         } catch (e) {}
         
         if (isSelected) {
             characterItem.classList.add('selected');
         }
         
-        const truncatedDescription = character.description && character.description.length > 50 
-            ? character.description.substring(0, 50) + '...' 
-            : character.description || 'Нет описания';
-        
         characterItem.innerHTML = `
             <div>
                 <div class="character-name">${character.name}</div>
-                <div class="character-info">${character.user_created ? 'Пользовательский' : 'Системный'}</div>
-                <div class="character-info">${truncatedDescription}</div>
             </div>
             <div class="character-actions">
-                ${character.user_created ? `<button class="action-button edit-character" data-name="${character.name}">Изменить</button>` : ''}
-                <button class="action-button select-character" data-name="${character.name}" data-user-created="${character.user_created}">Выбрать</button>
+                <button class="action-button edit-character" data-name="${character.name}">Изменить</button>
+                <button class="action-button select-character" data-name="${character.name}">Выбрать</button>
             </div>
         `;
         
@@ -158,17 +158,9 @@ function addCharacterButtonHandlers() {
     document.querySelectorAll('.edit-character').forEach(button => {
         button.addEventListener('click', event => {
             const characterName = event.target.dataset.name;
-            const character = characters.find(c => c.name === characterName && c.user_created === true);
-            
-            if (character) {
-                document.getElementById('character_edit_title').textContent = 'Редактирование персонажа';
-                document.getElementById('character_name').value = character.name;
-                document.getElementById('character_description').value = character.description || '';
-                document.getElementById('character_greeting').value = character.greeting || 'Привет!';
-                document.getElementById('character_name').disabled = true;
-                
-                currentEditingCharacter = character;
-                document.getElementById('character_edit').classList.add('active');
+            if (characterName) {
+                // Запрашиваем данные персонажа для редактирования
+                requestCharacterDetails(characterName);
             }
         });
     });
@@ -176,17 +168,14 @@ function addCharacterButtonHandlers() {
     document.querySelectorAll('.select-character').forEach(button => {
         button.addEventListener('click', event => {
             const characterName = event.target.dataset.name;
-            const userCreated = event.target.dataset.userCreated === 'true';
-            const character = characters.find(c => c.name === characterName && c.user_created === userCreated);
-            
-            if (character) {
+            if (characterName) {
                 const characterSelect = document.getElementById('character');
                 
                 // Находим опцию с соответствующим именем персонажа
                 Array.from(characterSelect.options).forEach(option => {
                     try {
                         const optionData = JSON.parse(option.value || '{}');
-                        if (optionData.name === characterName && optionData.user_created === userCreated) {
+                        if (optionData.name === characterName) {
                             option.selected = true;
                             
                             // Обновляем выделение в списке персонажей
@@ -219,20 +208,17 @@ function updateCharacterSelect() {
     
     characterSelect.innerHTML = '';
     
-    // Сортируем персонажей: системные сначала, затем пользовательские
-    const sortedCharacters = [...characters].sort((a, b) => {
-        if (a.user_created === b.user_created) {
-            return a.name.localeCompare(b.name);
-        }
-        return a.user_created ? 1 : -1;
+    // Сортируем персонажей по имени
+    const sortedCharacters = [...characterNames].sort((a, b) => {
+        return a.name.localeCompare(b.name);
     });
     
     sortedCharacters.forEach(char => {
         const option = document.createElement('option');
-        option.value = JSON.stringify({name: char.name, user_created: char.user_created});
-        option.textContent = char.name + (char.user_created ? ' [Пользовательский]' : '');
+        option.value = JSON.stringify({name: char.name});
+        option.textContent = char.name;
         
-        if (selectedOption && selectedOption.name === char.name && selectedOption.user_created === char.user_created) {
+        if (selectedOption && selectedOption.name === char.name) {
             option.selected = true;
         }
         

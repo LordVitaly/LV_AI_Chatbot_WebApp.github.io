@@ -9,18 +9,18 @@ console.log("Initial launch parameters:", tg.initDataUnsafe);
 // Глобальные переменные для работы с персонажами
 let currentEditingCharacter = null;
 let characters = [];
+let characterNames = []; // Только имена персонажей для отображения в списке
 
 // Константы для валидации
 const CHARACTER_NAME_LIMIT = 50;
 const CHARACTER_DESCRIPTION_LIMIT = 1000;
 const CHARACTER_GREETING_LIMIT = 500;
 
-// Флаг успешной загрузки настроек
-let settingsLoaded = false;
-// Флаг успешной загрузки ВСЕХ персонажей
-let charactersFullyLoaded = false;
-// Флаг отправки запроса данных
-let dataRequested = false;
+// Буфер для сборки чанков с данными персонажа
+window.characterDetailBuffer = {};
+
+// Флаг редактирования персонажа
+let isEditingCharacter = false;
 
 // Инициализация функций при загрузке документа
 document.addEventListener('DOMContentLoaded', function() {
@@ -49,52 +49,45 @@ document.addEventListener('DOMContentLoaded', function() {
     window.Telegram.WebApp.onEvent('messageReceived', handleBotMessage);
     console.log("Registered 'messageReceived' event handler for receiving data");
     
-    // Инициализируем списки для отображения пустых данных
-    renderCharacterList();
-    updateCharacterSelect();
-    
-    // Логируем состояние WebApp
-    console.log("WebApp initialization completed");
-    console.log("isExpanded:", tg.isExpanded);
-    console.log("colorScheme:", tg.colorScheme);
-    
-    // ЗАПРАШИВАЕМ ДАННЫЕ У БОТА ПОСЛЕ ИНИЦИАЛИЗАЦИИ
-    requestInitialData();
-    
-    // Тайм-аут на случай, если данные не пришли
-    setTimeout(checkDataLoaded, 20000);  // Увеличиваем таймаут до 20 секунд
+    // Извлекаем и обрабатываем данные из URL
+    loadDataFromUrl();
 });
 
-// Функция запроса данных от бота
-function requestInitialData() {
-    if (dataRequested) {
-        console.log("Initial data already requested, skipping duplicate request");
-        return;
-    }
-    
-    console.log("Requesting initial data from the bot...");
-    showLoadingIndicator("Запрос данных от бота...");
+// Функция извлечения и обработки данных из URL
+function loadDataFromUrl() {
+    console.log("Extracting data from URL");
     
     try {
-        // Отправляем запрос на получение данных
-        window.Telegram.WebApp.sendData(JSON.stringify({ action: "request_initial_data" }));
-        console.log("Initial data request sent via sendData");
-        dataRequested = true;
-        // Не скрываем индикатор здесь, ждем данные от бота
-    } catch (e) {
-        console.error("Error sending initial data request:", e);
-        hideLoadingIndicator();
-        showNotification('Не удалось отправить запрос на получение данных боту.', 'error', 7000);
+        // Получаем параметры из URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const encodedData = urlParams.get('data');
         
-        // Помечаем как "загруженные", чтобы убрать таймаут
-        settingsLoaded = true;
-        charactersFullyLoaded = true;
-        renderCharacterList();
-        updateCharacterSelect();
+        if (!encodedData) {
+            console.warn("No data parameter found in URL");
+            hideLoadingIndicator();
+            showNotification('Не удалось получить начальные данные. Пожалуйста, откройте настройки заново.', 'error', 7000);
+            return;
+        }
+        
+        // Декодируем base64 в строку
+        const jsonData = atob(encodedData);
+        console.log("Decoded data from URL (first 200 chars):", jsonData.substring(0, 200));
+        
+        // Парсим JSON
+        const initialData = JSON.parse(jsonData);
+        console.log("Parsed initial data:", initialData);
+        
+        // Обрабатываем полученные данные
+        processInitialData(initialData);
+        
+    } catch (e) {
+        console.error("Error loading data from URL:", e);
+        hideLoadingIndicator();
+        showNotification('Ошибка при обработке данных из URL. Пожалуйста, откройте настройки заново.', 'error', 7000);
     }
 }
 
-// Обработчик сообщений от бота
+// Функция обработки сообщений от бота
 function handleBotMessage(event) {
     console.log("Received message event:", event);
     const messageData = event.data;
@@ -116,63 +109,9 @@ function handleBotMessage(event) {
         }
         
         // Обработка разных типов сообщений
-        
-        // 1. Полные начальные данные (если поместились в одно сообщение)
-        if (parsedData.action === "initial_state" && parsedData.data) {
-            console.log("Processing full initial_state data");
-            processInitialData(parsedData.data);
-            settingsLoaded = true;
-            charactersFullyLoaded = true;
-            hideLoadingIndicator();
-            showNotification('Настройки и персонажи успешно загружены!', 'success');
-        }
-        // 2. Только начальные настройки (данные большие)
-        else if (parsedData.action === "initial_settings" && parsedData.data) {
-            console.log("Processing initial_settings data (chunked mode start)");
-            // Применяем настройки и текущего персонажа
-            if (parsedData.data.settings) {
-                updateUIWithSettings(parsedData.data.settings);
-                settingsLoaded = true;
-                // Сбрасываем текущих персонажей перед загрузкой чанков
-                characters = [];
-                renderCharacterList();
-                updateCharacterSelect();
-            }
-            if (parsedData.data.current_character) {
-                // Запоминаем, какой персонаж должен быть выбран после загрузки всех
-                window.pendingSelectedCharacter = parsedData.data.current_character;
-            }
-            // Не скрываем индикатор загрузки - ждем чанки с персонажами
-            showLoadingIndicator("Загрузка персонажей...");
-            charactersFullyLoaded = false;
-        }
-        // 3. Чанк с персонажами
-        else if (parsedData.action === "characters_chunk" && parsedData.characters) {
-            console.log(`Processing characters_chunk ${parsedData.chunk_index + 1}/${parsedData.total_chunks}`);
-            
-            // Добавляем персонажей из чанка
-            characters = characters.concat(parsedData.characters || []);
-            console.log(`Total characters after adding chunk: ${characters.length}`);
-            
-            // Обновляем интерфейс
-            renderCharacterList();
-            updateCharacterSelect();
-            
-            // Если это последний чанк
-            if (parsedData.chunk_index + 1 >= parsedData.total_chunks) {
-                charactersFullyLoaded = true;
-                hideLoadingIndicator();
-                showNotification(`Загружено ${characters.length} персонажей.`, 'success');
-                // Если был ожидающий выбранный персонаж, применяем его
-                if (window.pendingSelectedCharacter) {
-                    selectCharacterInUI(window.pendingSelectedCharacter);
-                    window.pendingSelectedCharacter = null;
-                }
-            } else {
-                // Обновляем текст индикатора загрузки
-                showLoadingIndicator(`Загрузка персонажей... (${parsedData.chunk_index + 1}/${parsedData.total_chunks})`);
-            }
-        }
+        if (parsedData.action === "character_details_chunk" && parsedData.data) {
+            processCharacterDetailsChunk(parsedData.data);
+        } 
         else {
             console.log("Received message data with unknown action:", parsedData.action);
         }
@@ -180,38 +119,101 @@ function handleBotMessage(event) {
     } catch (e) {
         console.error("Error parsing or processing message data JSON:", e);
         console.error("Original data:", messageData);
-        // Не скрываем индикатор, если ошибка во время загрузки чанков
-        if (!settingsLoaded || !charactersFullyLoaded) {
-            showLoadingIndicator("Ошибка загрузки данных");
-            showNotification('Ошибка обработки данных от бота', 'error');
-        }
+        hideLoadingIndicator();
+        showNotification('Ошибка обработки данных от бота', 'error');
     }
 }
 
-// Функция обработки полученных полных данных
+// Обработка чанка с данными персонажа
+function processCharacterDetailsChunk(data) {
+    const { name, chunk_index, total_chunks, greeting, description_part } = data;
+    
+    if (!name) {
+        console.error("Character name is missing in chunk data");
+        return;
+    }
+    
+    console.log(`Processing character details chunk ${chunk_index + 1}/${total_chunks} for ${name}`);
+    
+    // Инициализируем буфер для этого персонажа, если его еще нет
+    if (!window.characterDetailBuffer[name]) {
+        window.characterDetailBuffer[name] = {
+            descriptionParts: new Array(total_chunks),
+            receivedChunks: 0,
+            totalChunks: total_chunks,
+            greeting: null
+        };
+    }
+    
+    const buffer = window.characterDetailBuffer[name];
+    
+    // Сохраняем часть описания
+    buffer.descriptionParts[chunk_index] = description_part;
+    
+    // Сохраняем приветствие, если оно есть (обычно только в первом чанке)
+    if (greeting !== undefined && greeting !== null) {
+        buffer.greeting = greeting;
+    }
+    
+    // Увеличиваем счетчик полученных чанков
+    buffer.receivedChunks++;
+    
+    // Если получили все чанки - собираем полные данные
+    if (buffer.receivedChunks === buffer.totalChunks) {
+        console.log(`All ${total_chunks} chunks received for ${name}, assembling full data`);
+        
+        // Собираем полное описание из частей
+        const fullDescription = buffer.descriptionParts.join('');
+        
+        // Заполняем форму редактирования
+        document.getElementById('character_edit_title').textContent = 'Редактирование персонажа';
+        document.getElementById('character_name').value = name;
+        document.getElementById('character_name').disabled = true; // Имя нельзя менять при редактировании
+        document.getElementById('character_description').value = fullDescription;
+        document.getElementById('character_greeting').value = buffer.greeting || '';
+        
+        // Показываем форму редактирования
+        document.getElementById('character_edit').classList.add('active');
+        
+        // Переключаемся на вкладку персонажей
+        document.querySelectorAll('.tab')[1].click();
+        
+        // Скрываем индикатор загрузки
+        hideLoadingIndicator();
+        
+        // Устанавливаем флаг редактирования
+        isEditingCharacter = true;
+        currentEditingCharacter = { name: name };
+        
+        // Очищаем буфер для этого персонажа
+        delete window.characterDetailBuffer[name];
+    } else {
+        // Обновляем индикатор загрузки с прогрессом
+        showLoadingIndicator(`Загрузка персонажа ${name}... (${buffer.receivedChunks}/${buffer.totalChunks})`);
+    }
+}
+
+// Функция обработки полученных начальных данных
 function processInitialData(data) {
-    console.log("Processing complete initial data block");
+    console.log("Processing initial data from URL");
     
     // Обрабатываем настройки
     if (data.settings) {
         updateUIWithSettings(data.settings);
-        settingsLoaded = true;
     } else {
         console.warn("Initial data block missing settings.");
     }
     
-    // Обрабатываем список персонажей
-    if (data.characters && Array.isArray(data.characters)) {
-        characters = data.characters;
+    // Обрабатываем список имен персонажей
+    if (data.character_names && Array.isArray(data.character_names)) {
+        characterNames = data.character_names;
         renderCharacterList();
         updateCharacterSelect();
-        charactersFullyLoaded = true;
     } else {
-        console.warn("Initial data block missing characters array.");
-        characters = [];
+        console.warn("Initial data block missing character_names array.");
+        characterNames = [];
         renderCharacterList();
         updateCharacterSelect();
-        charactersFullyLoaded = true;
     }
     
     // Обрабатываем текущего персонажа (после загрузки списка)
@@ -221,34 +223,9 @@ function processInitialData(data) {
         console.warn("Initial data block missing current_character.");
     }
     
-    console.log("Complete initial data processed successfully");
-}
-
-// Функция проверки загрузки данных после таймаута
-function checkDataLoaded() {
-    if (!settingsLoaded || !charactersFullyLoaded) {
-        console.warn("Initial data not fully loaded after timeout");
-        hideLoadingIndicator();
-        
-        // Показываем ошибку только если что-то действительно не загрузилось
-        if (!settingsLoaded) {
-            showNotification('Не удалось загрузить настройки от бота.', 'error', 7000);
-        } else if (!charactersFullyLoaded) {
-            showNotification('Не удалось загрузить полный список персонажей от бота.', 'error', 7000);
-        }
-        
-        // Показываем то, что есть, чтобы интерфейс не был пустым
-        if (!charactersFullyLoaded) {
-            renderCharacterList();
-            updateCharacterSelect();
-            charactersFullyLoaded = true;  // Предотвращаем повторное срабатывание
-        }
-        if (!settingsLoaded) {
-            settingsLoaded = true;  // Предотвращаем повторное срабатывание
-        }
-    } else {
-        console.log("Data check: Settings and Characters seem loaded.");
-    }
+    // Скрываем индикатор загрузки
+    hideLoadingIndicator();
+    console.log("Initial data processed successfully");
 }
 
 // Функция отображения индикатора загрузки
@@ -343,6 +320,16 @@ function showNotification(message, type = 'info', duration = 3000) {
 // Обработчик нажатия кнопки "Назад"
 function handleBackButton() {
     console.log("Back button pressed");
+    
+    // Если мы редактируем персонажа, возвращаемся к списку
+    if (isEditingCharacter) {
+        document.getElementById('character_edit').classList.remove('active');
+        isEditingCharacter = false;
+        currentEditingCharacter = null;
+        return;
+    }
+    
+    // Иначе закрываем WebApp
     tg.close();
 }
 
@@ -393,6 +380,33 @@ function initSliders() {
     document.getElementById('streaming_edit_interval').addEventListener('input', function() {
         document.getElementById('streaming_interval_value').textContent = this.value;
     });
+    
+    // Связываем обработчики для зависимых настроек
+    document.getElementById('streaming_mode').addEventListener('change', updateStreamingEditVisibility);
+    document.getElementById('streaming_edit_mode').addEventListener('change', updateStreamingEditVisibility);
+}
+
+// Функция обновления видимости настроек редактирования при потоковой передаче
+function updateStreamingEditVisibility() {
+    const streamingModeCheckbox = document.getElementById('streaming_mode');
+    const streamingEditModeCheckbox = document.getElementById('streaming_edit_mode');
+    const streamingIntervalContainer = document.getElementById('streaming_edit_interval').closest('.field');
+    
+    if (streamingModeCheckbox && streamingEditModeCheckbox && streamingIntervalContainer) {
+        if (!streamingModeCheckbox.checked) {
+            streamingEditModeCheckbox.disabled = true;
+            streamingEditModeCheckbox.checked = false;
+            streamingIntervalContainer.style.display = 'none';
+        } else {
+            streamingEditModeCheckbox.disabled = false;
+            
+            if (streamingEditModeCheckbox.checked) {
+                streamingIntervalContainer.style.display = 'block';
+            } else {
+                streamingIntervalContainer.style.display = 'none';
+            }
+        }
+    }
 }
 
 // Обновление UI данными из настроек
@@ -464,29 +478,6 @@ function updateUIWithSettings(settings) {
     updateStreamingEditVisibility();
 }
 
-// Функция обновления видимости настроек редактирования при потоковой передаче
-function updateStreamingEditVisibility() {
-    const streamingModeCheckbox = document.getElementById('streaming_mode');
-    const streamingEditModeCheckbox = document.getElementById('streaming_edit_mode');
-    const streamingIntervalContainer = document.getElementById('streaming_edit_interval').closest('.field');
-    
-    if (streamingModeCheckbox && streamingEditModeCheckbox && streamingIntervalContainer) {
-        if (!streamingModeCheckbox.checked) {
-            streamingEditModeCheckbox.disabled = true;
-            streamingEditModeCheckbox.checked = false;
-            streamingIntervalContainer.style.display = 'none';
-        } else {
-            streamingEditModeCheckbox.disabled = false;
-            
-            if (streamingEditModeCheckbox.checked) {
-                streamingIntervalContainer.style.display = 'block';
-            } else {
-                streamingIntervalContainer.style.display = 'none';
-            }
-        }
-    }
-}
-
 // Получение отображаемого имени модели
 function getModelDisplayName(modelName) {
     // Здесь можно добавить псевдонимы для улучшения читаемости
@@ -504,18 +495,278 @@ function getModelDisplayName(modelName) {
 // Выбор персонажа в UI
 function selectCharacterInUI(character) {
     console.log("Selecting character in UI:", character);
+    if (!character || !character.name) return;
+    
     const characterSelect = document.getElementById('character');
+    
+    // Ищем опцию с этим именем
+    let found = false;
     Array.from(characterSelect.options).forEach(option => {
         try {
             const optionData = JSON.parse(option.value || '{}');
-            if (optionData.name === character.name && 
-                optionData.user_created === character.user_created) {
-                console.log(`Character option found: ${character.name} (user_created: ${character.user_created})`);
+            if (optionData.name === character.name) {
+                console.log(`Character option found: ${character.name}`);
                 option.selected = true;
+                found = true;
             }
         } catch (e) {
             console.error("Error parsing character option:", e);
         }
+    });
+    
+    // Если опция не найдена, добавляем новую
+    if (!found && character.name) {
+        console.log(`Adding new character option: ${character.name}`);
+        const option = document.createElement('option');
+        option.value = JSON.stringify({name: character.name});
+        option.textContent = character.name;
+        characterSelect.appendChild(option);
+        option.selected = true;
+    }
+}
+
+// Запрос деталей персонажа
+function requestCharacterDetails(name) {
+    console.log(`Requesting details for character: ${name}`);
+    showLoadingIndicator(`Загрузка данных персонажа ${name}...`);
+    
+    try {
+        // Отправляем запрос на получение деталей
+        const request = {
+            action: 'get_character_details',
+            name: name
+        };
+        
+        window.Telegram.WebApp.sendData(JSON.stringify(request));
+        console.log("Character details request sent");
+    } catch (e) {
+        console.error("Error requesting character details:", e);
+        hideLoadingIndicator();
+        showNotification('Ошибка при запросе данных персонажа', 'error');
+    }
+}
+
+// Отображение списка персонажей
+function renderCharacterList() {
+    const characterListElement = document.getElementById('character-list');
+    if (!characterListElement) return;
+    
+    characterListElement.innerHTML = '';
+    
+    if (characterNames.length === 0) {
+        characterListElement.innerHTML = '<div class="character-item">Нет доступных персонажей</div>';
+        return;
+    }
+    
+    // Сортируем персонажей по имени
+    characterNames.sort((a, b) => a.name.localeCompare(b.name));
+    
+    characterNames.forEach(character => {
+        const characterItem = document.createElement('div');
+        characterItem.className = 'character-item';
+        
+        // Проверяем, является ли персонаж текущим выбранным
+        const characterSelect = document.getElementById('character');
+        const selectedCharacterValue = characterSelect.value;
+        let isSelected = false;
+        
+        try {
+            const selectedCharacter = JSON.parse(selectedCharacterValue);
+            isSelected = selectedCharacter.name === character.name;
+        } catch (e) {}
+        
+        if (isSelected) {
+            characterItem.classList.add('selected');
+        }
+        
+        characterItem.innerHTML = `
+            <div>
+                <div class="character-name">${character.name}</div>
+            </div>
+            <div class="character-actions">
+                <button class="action-button edit-character" data-name="${character.name}">Изменить</button>
+                <button class="action-button select-character" data-name="${character.name}">Выбрать</button>
+            </div>
+        `;
+        
+        characterListElement.appendChild(characterItem);
+    });
+    
+    // Добавляем обработчики событий для кнопок
+    addCharacterButtonHandlers();
+}
+
+// Добавление обработчиков кнопок в списке персонажей
+function addCharacterButtonHandlers() {
+    document.querySelectorAll('.edit-character').forEach(button => {
+        button.addEventListener('click', event => {
+            const characterName = event.target.dataset.name;
+            if (characterName) {
+                // Запрашиваем данные персонажа для редактирования
+                requestCharacterDetails(characterName);
+            }
+        });
+    });
+    
+    document.querySelectorAll('.select-character').forEach(button => {
+        button.addEventListener('click', event => {
+            const characterName = event.target.dataset.name;
+            if (characterName) {
+                const characterSelect = document.getElementById('character');
+                
+                // Находим опцию с соответствующим именем персонажа
+                Array.from(characterSelect.options).forEach(option => {
+                    try {
+                        const optionData = JSON.parse(option.value || '{}');
+                        if (optionData.name === characterName) {
+                            option.selected = true;
+                            
+                            // Обновляем выделение в списке персонажей
+                            document.querySelectorAll('.character-item').forEach(item => {
+                                item.classList.remove('selected');
+                            });
+                            event.target.closest('.character-item').classList.add('selected');
+                            
+                            // Переключаемся на вкладку настроек
+                            document.querySelectorAll('.tab')[0].click();
+                        }
+                    } catch (e) {}
+                });
+            }
+        });
+    });
+    
+    // Добавляем обработчик для кнопки создания нового персонажа
+    const newCharacterButton = document.getElementById('new_character_button');
+    if (newCharacterButton) {
+        newCharacterButton.addEventListener('click', () => {
+            document.getElementById('character_edit_title').textContent = 'Создание персонажа';
+            document.getElementById('character_name').value = '';
+            document.getElementById('character_description').value = '';
+            document.getElementById('character_greeting').value = 'Привет! Я новый персонаж.';
+            document.getElementById('character_name').disabled = false;
+            
+            currentEditingCharacter = null;
+            document.getElementById('character_edit').classList.add('active');
+            isEditingCharacter = true;
+        });
+    }
+    
+    // Обработчик кнопки отмены редактирования
+    const cancelEditButton = document.getElementById('cancel_character_edit');
+    if (cancelEditButton) {
+        cancelEditButton.addEventListener('click', () => {
+            document.getElementById('character_edit').classList.remove('active');
+            currentEditingCharacter = null;
+            isEditingCharacter = false;
+        });
+    }
+    
+    // Обработчик кнопки сохранения персонажа
+    const saveCharacterButton = document.getElementById('save_character_button');
+    if (saveCharacterButton) {
+        saveCharacterButton.addEventListener('click', saveCharacter);
+    }
+}
+
+// Функция сохранения персонажа
+function saveCharacter() {
+    const name = document.getElementById('character_name').value.trim();
+    const description = document.getElementById('character_description').value.trim();
+    const greeting = document.getElementById('character_greeting').value.trim();
+    
+    if (!name) {
+        showNotification('Имя персонажа не может быть пустым', 'error');
+        return;
+    }
+    
+    if (name.length > CHARACTER_NAME_LIMIT) {
+        showNotification(`Имя персонажа не может быть длиннее ${CHARACTER_NAME_LIMIT} символов`, 'error');
+        return;
+    }
+    
+    if (description.length > CHARACTER_DESCRIPTION_LIMIT) {
+        showNotification(`Описание персонажа не может быть длиннее ${CHARACTER_DESCRIPTION_LIMIT} символов`, 'error');
+        return;
+    }
+    
+    if (greeting.length > CHARACTER_GREETING_LIMIT) {
+        showNotification(`Приветствие персонажа не может быть длиннее ${CHARACTER_GREETING_LIMIT} символов`, 'error');
+        return;
+    }
+    
+    // Если поле приветствия пустое, устанавливаем дефолтное значение
+    const finalGreeting = greeting === '' ? 'Привет!' : greeting;
+    
+    // Создаем данные персонажа
+    const characterData = {
+        name: name,
+        description: description,
+        greeting: finalGreeting
+    };
+    
+    // Собираем данные для сохранения
+    const saveData = {
+        action: 'save_character',
+        editedCharacter: characterData
+    };
+    
+    // Отправляем данные боту
+    try {
+        console.log("Sending character save request:", saveData);
+        showNotification('Сохранение персонажа...', 'info');
+        
+        window.Telegram.WebApp.sendData(JSON.stringify(saveData));
+        console.log("Character save request sent");
+        
+        // Скрываем форму редактирования
+        document.getElementById('character_edit').classList.remove('active');
+        isEditingCharacter = false;
+        currentEditingCharacter = null;
+        
+        // Обновляем список персонажей, если это новый персонаж
+        const existingIndex = characterNames.findIndex(c => c.name === name);
+        if (existingIndex === -1) {
+            characterNames.push({ name: name });
+            renderCharacterList();
+            updateCharacterSelect();
+        }
+        
+    } catch (e) {
+        console.error("Error saving character:", e);
+        showNotification('Ошибка при сохранении персонажа', 'error');
+    }
+}
+
+// Обновление выпадающего списка персонажей
+function updateCharacterSelect() {
+    const characterSelect = document.getElementById('character');
+    if (!characterSelect) return;
+    
+    const selectedValue = characterSelect.value;
+    let selectedOption = null;
+    
+    try {
+        selectedOption = JSON.parse(selectedValue);
+    } catch (e) {}
+    
+    characterSelect.innerHTML = '';
+    
+    // Сортируем персонажей по имени
+    const sortedCharacters = [...characterNames].sort((a, b) => {
+        return a.name.localeCompare(b.name);
+    });
+    
+    sortedCharacters.forEach(char => {
+        const option = document.createElement('option');
+        option.value = JSON.stringify({name: char.name});
+        option.textContent = char.name;
+        
+        if (selectedOption && selectedOption.name === char.name) {
+            option.selected = true;
+        }
+        
+        characterSelect.appendChild(option);
     });
 }
 
@@ -538,6 +789,7 @@ function saveSettings() {
     
     // Собираем настройки
     const settings = {
+        action: 'save_settings',
         character: character,
         model_name: document.getElementById('model').value,
         temperature: parseFloat(document.getElementById('temperature').value),
@@ -552,13 +804,6 @@ function saveSettings() {
     
     console.log("Collected settings:", settings);
     
-    // Добавляем созданных/измененных пользовательских персонажей
-    const userCreatedCharacters = characters.filter(c => c.user_created);
-    if (userCreatedCharacters.length > 0) {
-        console.log(`Adding ${userCreatedCharacters.length} user-created characters to settings`);
-        settings.characters = userCreatedCharacters;
-    }
-    
     try {
         const settingsJson = JSON.stringify(settings);
         console.log("Settings JSON size:", settingsJson.length, "bytes");
@@ -567,17 +812,10 @@ function saveSettings() {
         // Показываем уведомление перед отправкой
         showNotification('Отправка настроек...', 'info');
         
-        // Устанавливаем флаг для отслеживания успешной отправки
-        window.settingsSent = false;
-        
         // Отправка данных обратно в Telegram через sendData
         console.log("Sending data to Telegram using Telegram.WebApp.sendData()");
         window.Telegram.WebApp.sendData(settingsJson);
         console.log("Data sent successfully via sendData");
-        window.settingsSent = true;
-        
-        // Обновляем уведомление об успешной отправке
-        showNotification('Настройки обновляются! Пожалуйста, дождитесь подтверждения.', 'success');
         
         // WebApp автоматически закроется после вызова sendData()
         
@@ -586,11 +824,3 @@ function saveSettings() {
         showNotification('Ошибка отправки данных: ' + e.message, 'error');
     }
 }
-
-// Добавляем обработчик событий для проверки статуса отправки при закрытии
-window.addEventListener('beforeunload', function(e) {
-    if (!window.settingsSent) {
-        console.log("WebApp is closing but settings were not sent!");
-        // Возможно, сохранить флаг в localStorage, чтобы показать сообщение при следующем открытии
-    }
-});
