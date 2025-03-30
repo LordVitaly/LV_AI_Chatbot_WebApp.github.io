@@ -28,6 +28,9 @@ let isEditingCharacter = false;
 // Флаг загрузки данных
 let isDataLoading = false;
 
+// Текущий ID пользователя
+let currentUserId = 'default';
+
 // Инициализация функций при загрузке документа
 document.addEventListener('DOMContentLoaded', function() {
     console.log("DOM loaded, initializing WebApp UI");
@@ -46,10 +49,6 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Регистрируем обработчик для событий BackButton
     tg.BackButton.onClick(handleBackButton);
-    
-    // Регистрируем обработчик сообщений от бота
-    window.Telegram.WebApp.onEvent('messageReceived', handleBotMessage);
-    console.log("Registered 'messageReceived' event handler for receiving data");
     
     // Извлекаем и обрабатываем данные из URL
     loadDataFromUrl();
@@ -78,38 +77,60 @@ function loadDataFromUrl() {
     try {
         // Получаем параметры из URL
         const urlParams = new URLSearchParams(window.location.search);
-        const dataId = urlParams.get('id');
+        const sessionId = urlParams.get('session');
         
-        if (!dataId) {
-            console.warn("No data ID found in URL");
+        if (!sessionId) {
+            console.warn("No session ID found in URL");
             hideLoadingIndicator();
-            showNotification('Отсутствует ID данных в URL', 'warning');
             
-            // Запрашиваем список персонажей
-            setDefaultSettings();
+            // Запрашиваем список персонажей и настройки через API
+            loadInitialDataFromApi();
             return;
         }
         
-        console.log("Found data ID in URL:", dataId);
+        console.log("Found session ID in URL:", sessionId);
         
-        // Загружаем данные по ID
-        fetchDataById(dataId);
+        // Загружаем данные по ID сессии
+        fetchSessionData(sessionId);
     } catch (e) {
         console.error("Error loading data from URL:", e);
         hideLoadingIndicator();
         showNotification('Ошибка при обработке данных из URL', 'warning');
         
-        setDefaultSettings();
+        // Запрашиваем настройки через API
+        loadInitialDataFromApi();
     }
 }
 
-// Функция загрузки данных по ID
-async function fetchDataById(dataId) {
-    console.log("Fetching data by ID:", dataId);
+// Функция загрузки начальных данных через API
+function loadInitialDataFromApi() {
+    console.log("Loading initial data from API");
     showLoadingIndicator("Загрузка данных...");
     
+    // Запрашиваем список персонажей
+    fetchCharacterList()
+        .then(() => {
+            // После загрузки списка персонажей загружаем настройки
+            return fetchSettings();
+        })
+        .then(() => {
+            hideLoadingIndicator();
+        })
+        .catch((error) => {
+            console.error("Error loading initial data:", error);
+            hideLoadingIndicator();
+            showNotification('Ошибка загрузки данных', 'error');
+            setDefaultSettings();
+        });
+}
+
+// Функция загрузки данных сессии
+async function fetchSessionData(sessionId) {
+    console.log("Fetching session data:", sessionId);
+    showLoadingIndicator("Загрузка данных сессии...");
+    
     try {
-        const response = await fetch(`${API_BASE_URL}/get_data/${dataId}`);
+        const response = await fetch(`${API_BASE_URL}/init/${sessionId}`);
         if (!response.ok) {
             throw new Error(`API returned status ${response.status}`);
         }
@@ -119,31 +140,100 @@ async function fetchDataById(dataId) {
             throw new Error(result.error || "Unknown error");
         }
         
-        console.log("Data fetched successfully");
+        console.log("Session data fetched successfully");
+        
+        // Сохраняем ID пользователя
+        if (result.data.user_id) {
+            currentUserId = result.data.user_id;
+            console.log("Current user ID:", currentUserId);
+        }
         
         // Обрабатываем полученные данные
-        processInitialData(result.data);
+        processSessionData(result.data);
     } catch (e) {
-        console.error("Error fetching data by ID:", e);
+        console.error("Error fetching session data:", e);
         hideLoadingIndicator();
-        showNotification('Ошибка загрузки данных: ' + e.message, 'error');
+        showNotification('Ошибка загрузки данных сессии: ' + e.message, 'error');
         
-        setDefaultSettings();
+        // В случае ошибки загружаем данные через API
+        loadInitialDataFromApi();
     }
 }
 
-// Функция обработки полученных начальных данных
-function processInitialData(data) {
-    console.log("Processing initial data");
+// Функция запроса списка персонажей через API
+async function fetchCharacterList() {
+    console.log("Fetching character list from API");
+    
+    try {
+        const url = `${API_BASE_URL}/characters?user_id=${currentUserId}`;
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+            throw new Error(`API returned status ${response.status}`);
+        }
+        
+        const result = await response.json();
+        if (!result.success) {
+            throw new Error(result.error || "Unknown error");
+        }
+        
+        // Обработка полученных данных
+        if (result.data && result.data.character_names) {
+            characterNames = result.data.character_names;
+            
+            // Обновляем UI
+            renderCharacterList();
+            updateCharacterSelect();
+        }
+        
+        return true;
+    } catch (e) {
+        console.error("Error fetching character list:", e);
+        throw e;
+    }
+}
+
+// Функция запроса настроек через API
+async function fetchSettings() {
+    console.log("Fetching settings from API");
+    
+    try {
+        const url = `${API_BASE_URL}/settings?user_id=${currentUserId}`;
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+            throw new Error(`API returned status ${response.status}`);
+        }
+        
+        const result = await response.json();
+        if (!result.success) {
+            throw new Error(result.error || "Unknown error");
+        }
+        
+        // Обработка полученных данных
+        if (result.data) {
+            updateUIWithSettings(result.data);
+        }
+        
+        return true;
+    } catch (e) {
+        console.error("Error fetching settings:", e);
+        throw e;
+    }
+}
+
+// Функция обработки данных сессии
+function processSessionData(data) {
+    console.log("Processing session data");
     
     // Проверяем срок действия данных
-    if (data.meta && data.meta.expires_at) {
+    if (data.expires_at) {
         const now = Math.floor(Date.now() / 1000);
-        if (now > data.meta.expires_at) {
-            console.warn("Data has expired");
+        if (now > data.expires_at) {
+            console.warn("Session data has expired");
             hideLoadingIndicator();
-            showNotification('Данные устарели, пожалуйста, запросите настройки заново', 'warning');
-            setDefaultSettings();
+            showNotification('Данные сессии устарели, загружаем актуальные данные', 'warning');
+            loadInitialDataFromApi();
             return;
         }
     }
@@ -152,9 +242,9 @@ function processInitialData(data) {
     if (data.settings) {
         updateUIWithSettings(data.settings);
     } else {
-        console.warn("Initial data block missing settings.");
-        // Устанавливаем настройки по умолчанию
-        setDefaultSettings();
+        console.warn("Session data missing settings.");
+        // Загружаем настройки через API
+        fetchSettings().catch(() => setDefaultSettings());
     }
     
     // Обрабатываем список имен персонажей
@@ -163,70 +253,25 @@ function processInitialData(data) {
         renderCharacterList();
         updateCharacterSelect();
     } else {
-        console.warn("Initial data block missing character_names array or it's not valid.");
-        // Запрашиваем список персонажей от бота
-        requestCharacterList();
+        console.warn("Session data missing character_names array or it's not valid.");
+        // Запрашиваем список персонажей через API
+        fetchCharacterList().catch(() => {
+            characterNames = [];
+            renderCharacterList();
+            updateCharacterSelect();
+        });
     }
     
     // Обрабатываем текущего персонажа (после загрузки списка)
     if (data.current_character) {
         selectCharacterInUI(data.current_character);
     } else {
-        console.warn("Initial data block missing current_character.");
+        console.warn("Session data missing current_character.");
     }
     
     // Скрываем индикатор загрузки
     hideLoadingIndicator();
-    console.log("Initial data processed successfully");
-}
-
-// Функция запроса списка персонажей от бота
-function requestCharacterList() {
-    console.log("Requesting character list");
-    
-    if (isDataLoading) {
-        console.log("Data loading already in progress, skipping request");
-        return;
-    }
-    
-    isDataLoading = true;
-    showLoadingIndicator("Загрузка списка персонажей...");
-    
-    try {
-        // Отправляем запрос на получение списка персонажей
-        const request = {
-            action: 'get_character_list'
-        };
-        
-        window.Telegram.WebApp.sendData(JSON.stringify(request));
-        console.log("Character list request sent");
-    } catch (e) {
-        console.error("Error requesting character list:", e);
-        hideLoadingIndicator();
-        isDataLoading = false;
-        showNotification('Ошибка при запросе списка персонажей', 'error');
-    }
-}
-
-// Обработка списка персонажей
-function processCharacterList(data) {
-    console.log("Processing character list data:", data);
-    
-    if (data.character_names && Array.isArray(data.character_names)) {
-        characterNames = data.character_names;
-        renderCharacterList();
-        updateCharacterSelect();
-        hideLoadingIndicator();
-        isDataLoading = false;
-        
-        // Загружаем настройки по умолчанию, если они не были загружены
-        setDefaultSettings();
-    } else {
-        console.error("Invalid character list data format");
-        hideLoadingIndicator();
-        isDataLoading = false;
-        showNotification('Некорректный формат данных персонажей', 'error');
-    }
+    console.log("Session data processed successfully");
 }
 
 // Установка настроек по умолчанию
@@ -246,7 +291,7 @@ function setDefaultSettings() {
         enable_image_generation: true
     };
     
-    // Обновляем UI настройками по умолчанию, если они не были установлены
+    // Обновляем UI настройками по умолчанию
     updateUIWithSettings(defaultSettings);
 }
 
@@ -269,47 +314,6 @@ function handleBackButton() {
 // Обработчик изменения области просмотра (для мобильных устройств)
 function handleViewportChanged(event) {
     console.log('Viewport changed:', event);
-}
-
-// Функция обработки сообщений от бота
-function handleBotMessage(event) {
-    console.log("Received message event:", event);
-    const messageData = event.data;
-    
-    if (!messageData || typeof messageData !== 'string') {
-        console.log("Received non-string or empty message data, skipping:", messageData);
-        return;
-    }
-    
-    console.log("Processing message data (first 200 chars):", messageData.substring(0, 200) + "...");
-    
-    try {
-        const parsedData = JSON.parse(messageData);
-        console.log("Parsed message data:", parsedData);
-        
-        if (!parsedData.action) {
-            console.log("Received message data without 'action' field, skipping");
-            return;
-        }
-        
-        // Обработка разных типов сообщений
-        if (parsedData.action === "character_details_chunk" && parsedData.data) {
-            processCharacterDetailsChunk(parsedData.data);
-        } 
-        else if (parsedData.action === "character_list_response" && parsedData.data) {
-            processCharacterList(parsedData.data);
-        }
-        else {
-            console.log("Received message data with unknown action:", parsedData.action);
-        }
-        
-    } catch (e) {
-        console.error("Error parsing or processing message data JSON:", e);
-        console.error("Original data:", messageData);
-        hideLoadingIndicator();
-        isDataLoading = false;
-        showNotification('Ошибка обработки данных от бота', 'error');
-    }
 }
 
 // Инициализация системы вкладок
@@ -444,8 +448,10 @@ function selectCharacterInUI(character) {
 }
 
 // Отправка настроек боту
-function saveSettings() {
+async function saveSettings() {
     console.log("Saving settings...");
+    showLoadingIndicator('Сохранение настроек...');
+    
     const characterValue = document.getElementById('character').value;
     let character = null;
     
@@ -455,6 +461,7 @@ function saveSettings() {
             console.log("Selected character:", character);
         } catch (e) {
             console.error("Error parsing character value:", e);
+            hideLoadingIndicator();
             showNotification('Ошибка при обработке данных персонажа', 'error');
             return;
         }
@@ -462,7 +469,6 @@ function saveSettings() {
     
     // Собираем настройки
     const settings = {
-        action: 'save_settings',
         character: character,
         model_name: document.getElementById('model').value,
         temperature: parseFloat(document.getElementById('temperature').value),
@@ -475,26 +481,42 @@ function saveSettings() {
         enable_image_generation: document.getElementById('enable_image_generation').checked
     };
     
-    console.log("Collected settings:", settings);
+    console.log("Settings to save:", settings);
     
     try {
-        const settingsJson = JSON.stringify(settings);
-        console.log("Settings JSON size:", settingsJson.length, "bytes");
-        console.log("Settings JSON (first 200 chars):", settingsJson.substring(0, 200));
+        // Сохраняем настройки через API
+        const url = `${API_BASE_URL}/settings?user_id=${currentUserId}`;
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(settings)
+        });
         
-        // Показываем уведомление перед отправкой
-        showLoadingIndicator('Отправка настроек...');
+        if (!response.ok) {
+            throw new Error(`API returned status ${response.status}`);
+        }
         
-        // Отправка данных обратно в Telegram через sendData
-        console.log("Sending data to Telegram using Telegram.WebApp.sendData()");
-        window.Telegram.WebApp.sendData(settingsJson);
-        console.log("Data sent successfully via sendData");
+        const result = await response.json();
+        if (!result.success) {
+            throw new Error(result.error || "Unknown error");
+        }
         
-        // WebApp автоматически закроется после вызова sendData()
+        console.log("Settings saved successfully via API");
+        
+        // Отправляем данные в Telegram для обновления настроек бота
+        const settingsData = {
+            action: 'save_settings',
+            ...settings
+        };
+        
+        window.Telegram.WebApp.sendData(JSON.stringify(settingsData));
+        console.log("Settings sent to Telegram");
         
     } catch (e) {
-        console.error("Error sending data:", e);
+        console.error("Error saving settings:", e);
         hideLoadingIndicator();
-        showNotification('Ошибка отправки данных: ' + e.message, 'error');
+        showNotification('Ошибка при сохранении настроек: ' + e.message, 'error');
     }
 }

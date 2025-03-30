@@ -8,16 +8,36 @@
   },
   "routes": [
     {
+      "src": "/api/init",
+      "dest": "/api/init.py"
+    },
+    {
+      "src": "/api/init/(?<id>[^/]+)",
+      "dest": "/api/init.py?id=$id"
+    },
+    {
+      "src": "/api/settings",
+      "dest": "/api/settings.py"
+    },
+    {
+      "src": "/api/characters",
+      "dest": "/api/characters.py"
+    },
+    {
+      "src": "/api/characters/(?<name>[^/]+)",
+      "dest": "/api/characters.py?name=$name"
+    },
+    {
+      "src": "/api/get_character",
+      "dest": "/api/get_character.py"
+    },
+    {
       "src": "/api/get_data/(?<id>[^/]+)",
       "dest": "/api/get_data.py?id=$id"
     },
     {
       "src": "/api/store_data",
       "dest": "/api/store_data.py"
-    },
-    {
-      "src": "/api/get_character",
-      "dest": "/api/get_character.py"
     }
   ],
   "headers": [
