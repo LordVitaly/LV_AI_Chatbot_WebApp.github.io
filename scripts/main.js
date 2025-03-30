@@ -22,6 +22,9 @@ window.characterDetailBuffer = {};
 // Флаг редактирования персонажа
 let isEditingCharacter = false;
 
+// Флаг загрузки данных
+let isDataLoading = false;
+
 // Инициализация функций при загрузке документа
 document.addEventListener('DOMContentLoaded', function() {
     console.log("DOM loaded, initializing WebApp UI");
@@ -65,25 +68,78 @@ function loadDataFromUrl() {
         if (!encodedData) {
             console.warn("No data parameter found in URL");
             hideLoadingIndicator();
-            showNotification('Не удалось получить начальные данные. Пожалуйста, откройте настройки заново.', 'error', 7000);
+            
+            // Запрашиваем список персонажей
+            requestCharacterList();
             return;
         }
         
         // Декодируем base64 в строку
-        const jsonData = atob(encodedData);
-        console.log("Decoded data from URL (first 200 chars):", jsonData.substring(0, 200));
+        let jsonData;
+        try {
+            jsonData = atob(encodedData);
+            console.log("Decoded data from URL (first 200 chars):", jsonData.substring(0, 200));
+        } catch (decodeError) {
+            console.error("Error decoding base64 data:", decodeError);
+            hideLoadingIndicator();
+            showNotification('Ошибка декодирования данных. Загружаем данные напрямую...', 'warning', 3000);
+            
+            // Запрашиваем список персонажей
+            requestCharacterList();
+            return;
+        }
         
         // Парсим JSON
-        const initialData = JSON.parse(jsonData);
-        console.log("Parsed initial data:", initialData);
-        
-        // Обрабатываем полученные данные
-        processInitialData(initialData);
+        try {
+            const initialData = JSON.parse(jsonData);
+            console.log("Parsed initial data:", initialData);
+            
+            // Обрабатываем полученные данные
+            processInitialData(initialData);
+        } catch (parseError) {
+            console.error("Error parsing JSON data:", parseError);
+            hideLoadingIndicator();
+            showNotification('Ошибка обработки JSON. Загружаем данные напрямую...', 'warning', 3000);
+            
+            // Запрашиваем список персонажей
+            requestCharacterList();
+        }
         
     } catch (e) {
         console.error("Error loading data from URL:", e);
         hideLoadingIndicator();
-        showNotification('Ошибка при обработке данных из URL. Пожалуйста, откройте настройки заново.', 'error', 7000);
+        showNotification('Ошибка при обработке данных из URL. Загружаем данные напрямую...', 'warning', 3000);
+        
+        // Запрашиваем список персонажей
+        requestCharacterList();
+    }
+}
+
+// Функция запроса списка персонажей от бота
+function requestCharacterList() {
+    console.log("Requesting character list");
+    
+    if (isDataLoading) {
+        console.log("Data loading already in progress, skipping request");
+        return;
+    }
+    
+    isDataLoading = true;
+    showLoadingIndicator("Загрузка списка персонажей...");
+    
+    try {
+        // Отправляем запрос на получение списка персонажей
+        const request = {
+            action: 'get_character_list'
+        };
+        
+        window.Telegram.WebApp.sendData(JSON.stringify(request));
+        console.log("Character list request sent");
+    } catch (e) {
+        console.error("Error requesting character list:", e);
+        hideLoadingIndicator();
+        isDataLoading = false;
+        showNotification('Ошибка при запросе списка персонажей', 'error');
     }
 }
 
@@ -112,6 +168,9 @@ function handleBotMessage(event) {
         if (parsedData.action === "character_details_chunk" && parsedData.data) {
             processCharacterDetailsChunk(parsedData.data);
         } 
+        else if (parsedData.action === "character_list_response" && parsedData.data) {
+            processCharacterList(parsedData.data);
+        }
         else {
             console.log("Received message data with unknown action:", parsedData.action);
         }
@@ -120,8 +179,51 @@ function handleBotMessage(event) {
         console.error("Error parsing or processing message data JSON:", e);
         console.error("Original data:", messageData);
         hideLoadingIndicator();
+        isDataLoading = false;
         showNotification('Ошибка обработки данных от бота', 'error');
     }
+}
+
+// Обработка списка персонажей
+function processCharacterList(data) {
+    console.log("Processing character list data:", data);
+    
+    if (data.character_names && Array.isArray(data.character_names)) {
+        characterNames = data.character_names;
+        renderCharacterList();
+        updateCharacterSelect();
+        hideLoadingIndicator();
+        isDataLoading = false;
+        
+        // Загружаем настройки по умолчанию, если они не были загружены
+        setDefaultSettings();
+    } else {
+        console.error("Invalid character list data format");
+        hideLoadingIndicator();
+        isDataLoading = false;
+        showNotification('Некорректный формат данных персонажей', 'error');
+    }
+}
+
+// Установка настроек по умолчанию
+function setDefaultSettings() {
+    console.log("Setting default settings");
+    
+    // Значения по умолчанию
+    const defaultSettings = {
+        model_name: "gemini-2.0-flash",
+        temperature: 0.85,
+        top_p: 0.95,
+        top_k: 1,
+        streaming_mode: true,
+        streaming_edit_mode: true,
+        streaming_edit_interval: 2.0,
+        enable_message_buttons: true,
+        enable_image_generation: true
+    };
+    
+    // Обновляем UI настройками по умолчанию, если они не были установлены
+    updateUIWithSettings(defaultSettings);
 }
 
 // Обработка чанка с данными персонажа
@@ -202,6 +304,8 @@ function processInitialData(data) {
         updateUIWithSettings(data.settings);
     } else {
         console.warn("Initial data block missing settings.");
+        // Устанавливаем настройки по умолчанию
+        setDefaultSettings();
     }
     
     // Обрабатываем список имен персонажей
@@ -210,10 +314,9 @@ function processInitialData(data) {
         renderCharacterList();
         updateCharacterSelect();
     } else {
-        console.warn("Initial data block missing character_names array.");
-        characterNames = [];
-        renderCharacterList();
-        updateCharacterSelect();
+        console.warn("Initial data block missing character_names array or it's not valid.");
+        // Запрашиваем список персонажей от бота
+        requestCharacterList();
     }
     
     // Обрабатываем текущего персонажа (после загрузки списка)
@@ -714,7 +817,7 @@ function saveCharacter() {
     // Отправляем данные боту
     try {
         console.log("Sending character save request:", saveData);
-        showNotification('Сохранение персонажа...', 'info');
+        showLoadingIndicator('Сохранение персонажа...');
         
         window.Telegram.WebApp.sendData(JSON.stringify(saveData));
         console.log("Character save request sent");
@@ -734,6 +837,7 @@ function saveCharacter() {
         
     } catch (e) {
         console.error("Error saving character:", e);
+        hideLoadingIndicator();
         showNotification('Ошибка при сохранении персонажа', 'error');
     }
 }
@@ -810,7 +914,7 @@ function saveSettings() {
         console.log("Settings JSON (first 200 chars):", settingsJson.substring(0, 200));
         
         // Показываем уведомление перед отправкой
-        showNotification('Отправка настроек...', 'info');
+        showLoadingIndicator('Отправка настроек...');
         
         // Отправка данных обратно в Telegram через sendData
         console.log("Sending data to Telegram using Telegram.WebApp.sendData()");
@@ -821,6 +925,7 @@ function saveSettings() {
         
     } catch (e) {
         console.error("Error sending data:", e);
+        hideLoadingIndicator();
         showNotification('Ошибка отправки данных: ' + e.message, 'error');
     }
 }
