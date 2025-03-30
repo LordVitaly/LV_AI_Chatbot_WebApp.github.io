@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "functions": {
+    "api/*.py": {
+      "memory": 128,
+      "maxDuration": 10
+    }
+  },
+  "routes": [
+    {
+      "src": "/api/get_data/(?<id>[^/]+)",
+      "dest": "/api/get_data.py?id=$id"
+    }
+  ]
+}
