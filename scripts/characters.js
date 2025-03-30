@@ -1,6 +1,3 @@
-// API URL
-const API_BASE_URL = "/api";
-
 // Инициализация обработчиков вкладки персонажей
 function initCharactersTab() {
     console.log("Initializing characters tab");
@@ -41,7 +38,7 @@ function initCharactersTab() {
 }
 
 // Сохранение персонажа
-function saveCharacter() {
+async function saveCharacter() {
     const name = document.getElementById('character_name').value.trim();
     const description = document.getElementById('character_description').value.trim();
     const greeting = document.getElementById('character_greeting').value.trim();
@@ -76,48 +73,13 @@ function saveCharacter() {
         greeting: finalGreeting
     };
     
-    // Сначала сохраняем в API кэш данных персонажа
-    saveCharacterToApi(characterData)
-        .then(() => {
-            // После успешного сохранения в API отправляем данные боту
-            const saveData = {
-                action: 'save_character',
-                editedCharacter: characterData
-            };
-            
-            console.log("Sending character save request:", saveData);
-            showLoadingIndicator('Сохранение персонажа...');
-            
-            window.Telegram.WebApp.sendData(JSON.stringify(saveData));
-            console.log("Character save request sent");
-            
-            // Скрываем форму редактирования
-            document.getElementById('character_edit').classList.remove('active');
-            isEditingCharacter = false;
-            currentEditingCharacter = null;
-            
-            // Скрываем кнопку "Назад"
-            tg.BackButton.hide();
-            
-            // Обновляем список персонажей, если это новый персонаж
-            const existingIndex = characterNames.findIndex(c => c.name === name);
-            if (existingIndex === -1) {
-                characterNames.push({ name: name });
-                renderCharacterList();
-                updateCharacterSelect();
-            }
-        })
-        .catch(error => {
-            console.error("Error saving character:", error);
-            hideLoadingIndicator();
-            showNotification('Ошибка при сохранении персонажа', 'error');
-        });
-}
-
-// Сохранение данных персонажа в API
-async function saveCharacterToApi(characterData) {
+    console.log("Saving character:", characterData);
+    showLoadingIndicator('Сохранение персонажа...');
+    
     try {
-        const response = await fetch(`${API_BASE_URL}/get_character`, {
+        // Сохраняем персонажа через API
+        const url = `${API_BASE_URL}/characters?user_id=${currentUserId}`;
+        const response = await fetch(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -130,172 +92,41 @@ async function saveCharacterToApi(characterData) {
         }
         
         const result = await response.json();
+        
         if (!result.success) {
             throw new Error(result.error || "Unknown error");
         }
         
-        console.log("Character data saved to API successfully");
-        return true;
-    } catch (error) {
-        console.error("Error saving character to API:", error);
-        // Продолжаем, даже если не удалось сохранить в API
-        return true;
-    }
-}
-
-// Запрос деталей персонажа
-async function requestCharacterDetails(name) {
-    console.log(`Requesting details for character: ${name}`);
-    showLoadingIndicator(`Загрузка данных персонажа ${name}...`);
-    
-    try {
-        // Сначала проверяем, есть ли данные в API
-        const apiData = await fetchCharacterFromApi(name);
+        console.log("Character saved successfully via API");
         
-        if (apiData) {
-            // Используем данные из API
-            processCharacterData(apiData);
+        // Отправляем данные в Telegram для обновления настроек бота
+        const saveData = {
+            action: 'save_character',
+            editedCharacter: characterData
+        };
+        
+        window.Telegram.WebApp.sendData(JSON.stringify(saveData));
+        console.log("Character save request sent to Telegram");
+        
+        // Скрываем форму редактирования
+        document.getElementById('character_edit').classList.remove('active');
+        isEditingCharacter = false;
+        currentEditingCharacter = null;
+        
+        // Скрываем кнопку "Назад"
+        tg.BackButton.hide();
+        
+        // Обновляем список персонажей
+        setTimeout(() => {
             hideLoadingIndicator();
-            return;
-        }
+            showNotification('Персонаж успешно сохранен', 'success');
+            fetchCharacterList();
+        }, 1000);
         
-        // Если в API данных нет, запрашиваем от бота
-        const request = {
-            action: 'get_character_details',
-            name: name
-        };
-        
-        window.Telegram.WebApp.sendData(JSON.stringify(request));
-        console.log("Character details request sent to bot");
     } catch (e) {
-        console.error("Error requesting character details:", e);
+        console.error("Error saving character:", e);
         hideLoadingIndicator();
-        showNotification('Ошибка при запросе данных персонажа', 'error');
-    }
-}
-
-// Получение данных персонажа из API
-async function fetchCharacterFromApi(name) {
-    try {
-        const response = await fetch(`${API_BASE_URL}/get_character?name=${encodeURIComponent(name)}`);
-        
-        if (!response.ok) {
-            if (response.status === 404) {
-                console.log(`Character '${name}' not found in API`);
-                return null;
-            }
-            throw new Error(`API returned status ${response.status}`);
-        }
-        
-        const result = await response.json();
-        if (!result.success) {
-            throw new Error(result.error || "Unknown error");
-        }
-        
-        console.log("Character data fetched from API successfully");
-        return result.data;
-    } catch (error) {
-        console.error("Error fetching character from API:", error);
-        return null;
-    }
-}
-
-// Обработка полученных данных персонажа
-function processCharacterData(data) {
-    if (!data || !data.name) {
-        console.error("Invalid character data");
-        hideLoadingIndicator();
-        showNotification('Некорректные данные персонажа', 'error');
-        return;
-    }
-    
-    const name = data.name;
-    const description = data.description || "";
-    const greeting = data.greeting || "";
-    
-    // Заполняем форму редактирования
-    document.getElementById('character_edit_title').textContent = 'Редактирование персонажа';
-    document.getElementById('character_name').value = name;
-    document.getElementById('character_name').disabled = true; // Имя нельзя менять при редактировании
-    document.getElementById('character_description').value = description;
-    document.getElementById('character_greeting').value = greeting;
-    
-    // Показываем форму редактирования
-    document.getElementById('character_edit').classList.add('active');
-    
-    // Переключаемся на вкладку персонажей
-    document.querySelectorAll('.tab')[1].click();
-    
-    // Скрываем индикатор загрузки
-    hideLoadingIndicator();
-    
-    // Устанавливаем флаг редактирования
-    isEditingCharacter = true;
-    currentEditingCharacter = { name: name };
-    
-    // Показываем кнопку "Назад"
-    tg.BackButton.show();
-}
-
-// Обработка чанка с данными персонажа
-function processCharacterDetailsChunk(data) {
-    const { name, chunk_index, total_chunks, greeting, description_part } = data;
-    
-    if (!name) {
-        console.error("Character name is missing in chunk data");
-        return;
-    }
-    
-    console.log(`Processing character details chunk ${chunk_index + 1}/${total_chunks} for ${name}`);
-    
-    // Инициализируем буфер для этого персонажа, если его еще нет
-    if (!window.characterDetailBuffer[name]) {
-        window.characterDetailBuffer[name] = {
-            descriptionParts: new Array(total_chunks),
-            receivedChunks: 0,
-            totalChunks: total_chunks,
-            greeting: null
-        };
-    }
-    
-    const buffer = window.characterDetailBuffer[name];
-    
-    // Сохраняем часть описания
-    buffer.descriptionParts[chunk_index] = description_part;
-    
-    // Сохраняем приветствие, если оно есть (обычно только в первом чанке)
-    if (greeting !== undefined && greeting !== null) {
-        buffer.greeting = greeting;
-    }
-    
-    // Увеличиваем счетчик полученных чанков
-    buffer.receivedChunks++;
-    
-    // Если получили все чанки - собираем полные данные
-    if (buffer.receivedChunks === buffer.totalChunks) {
-        console.log(`All ${total_chunks} chunks received for ${name}, assembling full data`);
-        
-        // Собираем полное описание из частей
-        const fullDescription = buffer.descriptionParts.join('');
-        
-        // Создаем полные данные персонажа
-        const characterData = {
-            name: name,
-            description: fullDescription,
-            greeting: buffer.greeting || ''
-        };
-        
-        // Сохраняем данные в API для кэширования
-        saveCharacterToApi(characterData).then(() => {
-            // Обрабатываем данные
-            processCharacterData(characterData);
-        });
-        
-        // Очищаем буфер для этого персонажа
-        delete window.characterDetailBuffer[name];
-    } else {
-        // Обновляем индикатор загрузки с прогрессом
-        showLoadingIndicator(`Загрузка персонажа ${name}... (${buffer.receivedChunks}/${buffer.totalChunks})`);
+        showNotification('Ошибка при сохранении персонажа: ' + e.message, 'error');
     }
 }
 
@@ -356,7 +187,7 @@ function addCharacterButtonHandlers() {
             const characterName = event.target.dataset.name;
             if (characterName) {
                 // Запрашиваем данные персонажа для редактирования
-                requestCharacterDetails(characterName);
+                fetchCharacterDetails(characterName);
             }
         });
     });
@@ -382,6 +213,9 @@ function addCharacterButtonHandlers() {
                             
                             // Переключаемся на вкладку настроек
                             document.querySelectorAll('.tab')[0].click();
+                            
+                            // Показываем уведомление
+                            showNotification(`Выбран персонаж "${characterName}"`, 'info');
                         }
                     } catch (e) {}
                 });
