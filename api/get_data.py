@@ -1,6 +1,7 @@
 from http.server import BaseHTTPRequestHandler
 import json
 import os
+import time
 from os.path import join as path_join
 import re
 
@@ -46,6 +47,22 @@ class handler(BaseHTTPRequestHandler):
             with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
+            # Проверяем срок действия данных
+            current_time = int(time.time())
+            if "meta" in data and "expires_at" in data["meta"]:
+                if current_time > data["meta"]["expires_at"]:
+                    # Данные устарели
+                    os.remove(file_path)  # Удаляем устаревший файл
+                    
+                    self.send_response(410)  # Gone
+                    self.send_header('Content-type', 'application/json')
+                    self.send_header('Access-Control-Allow-Origin', '*')
+                    self.end_headers()
+                    
+                    response = json.dumps({"error": "Data has expired", "success": False})
+                    self.wfile.write(response.encode('utf-8'))
+                    return
+            
             # Отправляем данные клиенту
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
@@ -64,3 +81,11 @@ class handler(BaseHTTPRequestHandler):
             
             response = json.dumps({"error": str(e), "success": False})
             self.wfile.write(response.encode('utf-8'))
+    
+    def do_OPTIONS(self):
+        # Настройка CORS для предварительных запросов
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*') 
+        self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()

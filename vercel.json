@@ -10,6 +10,24 @@
     {
       "src": "/api/get_data/(?<id>[^/]+)",
       "dest": "/api/get_data.py?id=$id"
+    },
+    {
+      "src": "/api/store_data",
+      "dest": "/api/store_data.py"
+    },
+    {
+      "src": "/api/get_character",
+      "dest": "/api/get_character.py"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type" }
+      ]
     }
   ]
 }

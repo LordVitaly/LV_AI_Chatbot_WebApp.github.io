@@ -16,6 +16,9 @@ const CHARACTER_NAME_LIMIT = 50;
 const CHARACTER_DESCRIPTION_LIMIT = 1000;
 const CHARACTER_GREETING_LIMIT = 500;
 
+// API URL
+const API_BASE_URL = "/api";
+
 // Буфер для сборки чанков с данными персонажа
 window.characterDetailBuffer = {};
 
@@ -75,61 +78,75 @@ function loadDataFromUrl() {
     try {
         // Получаем параметры из URL
         const urlParams = new URLSearchParams(window.location.search);
-        const encodedData = urlParams.get('data');
+        const dataId = urlParams.get('id');
         
-        if (!encodedData) {
-            console.warn("No data parameter found in URL");
+        if (!dataId) {
+            console.warn("No data ID found in URL");
             hideLoadingIndicator();
+            showNotification('Отсутствует ID данных в URL', 'warning');
             
             // Запрашиваем список персонажей
-            requestCharacterList();
+            setDefaultSettings();
             return;
         }
         
-        // Декодируем base64 в строку
-        let jsonData;
-        try {
-            jsonData = atob(encodedData);
-            console.log("Decoded data from URL (first 200 chars):", jsonData.substring(0, 200));
-        } catch (decodeError) {
-            console.error("Error decoding base64 data:", decodeError);
-            hideLoadingIndicator();
-            showNotification('Ошибка декодирования данных. Загружаем данные напрямую...', 'warning', 3000);
-            
-            // Запрашиваем список персонажей
-            requestCharacterList();
-            return;
-        }
+        console.log("Found data ID in URL:", dataId);
         
-        // Парсим JSON
-        try {
-            const initialData = JSON.parse(jsonData);
-            console.log("Parsed initial data:", initialData);
-            
-            // Обрабатываем полученные данные
-            processInitialData(initialData);
-        } catch (parseError) {
-            console.error("Error parsing JSON data:", parseError);
-            hideLoadingIndicator();
-            showNotification('Ошибка обработки JSON. Загружаем данные напрямую...', 'warning', 3000);
-            
-            // Запрашиваем список персонажей
-            requestCharacterList();
-        }
-        
+        // Загружаем данные по ID
+        fetchDataById(dataId);
     } catch (e) {
         console.error("Error loading data from URL:", e);
         hideLoadingIndicator();
-        showNotification('Ошибка при обработке данных из URL. Загружаем данные напрямую...', 'warning', 3000);
+        showNotification('Ошибка при обработке данных из URL', 'warning');
         
-        // Запрашиваем список персонажей
-        requestCharacterList();
+        setDefaultSettings();
+    }
+}
+
+// Функция загрузки данных по ID
+async function fetchDataById(dataId) {
+    console.log("Fetching data by ID:", dataId);
+    showLoadingIndicator("Загрузка данных...");
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/get_data/${dataId}`);
+        if (!response.ok) {
+            throw new Error(`API returned status ${response.status}`);
+        }
+        
+        const result = await response.json();
+        if (!result.success) {
+            throw new Error(result.error || "Unknown error");
+        }
+        
+        console.log("Data fetched successfully");
+        
+        // Обрабатываем полученные данные
+        processInitialData(result.data);
+    } catch (e) {
+        console.error("Error fetching data by ID:", e);
+        hideLoadingIndicator();
+        showNotification('Ошибка загрузки данных: ' + e.message, 'error');
+        
+        setDefaultSettings();
     }
 }
 
 // Функция обработки полученных начальных данных
 function processInitialData(data) {
-    console.log("Processing initial data from URL");
+    console.log("Processing initial data");
+    
+    // Проверяем срок действия данных
+    if (data.meta && data.meta.expires_at) {
+        const now = Math.floor(Date.now() / 1000);
+        if (now > data.meta.expires_at) {
+            console.warn("Data has expired");
+            hideLoadingIndicator();
+            showNotification('Данные устарели, пожалуйста, запросите настройки заново', 'warning');
+            setDefaultSettings();
+            return;
+        }
+    }
     
     // Обрабатываем настройки
     if (data.settings) {
@@ -391,22 +408,6 @@ function hideLoadingIndicator() {
     if (loadingIndicator) {
         loadingIndicator.remove();
     }
-}
-
-// Функция отображения уведомления
-function showNotification(message, type = 'info', duration = 3000) {
-    // Создаем элемент уведомления
-    const notification = document.createElement('div');
-    notification.className = `notification ${type}`;
-    notification.textContent = message;
-    document.body.appendChild(notification);
-    
-    // Удаляем уведомление через указанное время
-    setTimeout(() => {
-        if (notification.parentNode) {
-            notification.parentNode.removeChild(notification);
-        }
-    }, duration);
 }
 
 // Выбор персонажа в UI
