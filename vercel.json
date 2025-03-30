@@ -6,39 +6,15 @@
       "maxDuration": 10
     }
   },
-  "routes": [
-    {
-      "src": "/api/init",
-      "dest": "/api/init.py"
-    },
-    {
-      "src": "/api/init/(?<id>[^/]+)",
-      "dest": "/api/init.py?id=$id"
-    },
-    {
-      "src": "/api/settings",
-      "dest": "/api/settings.py"
-    },
-    {
-      "src": "/api/characters",
-      "dest": "/api/characters.py"
-    },
-    {
-      "src": "/api/characters/(?<name>[^/]+)",
-      "dest": "/api/characters.py?name=$name"
-    },
-    {
-      "src": "/api/get_character",
-      "dest": "/api/get_character.py"
-    },
-    {
-      "src": "/api/get_data/(?<id>[^/]+)",
-      "dest": "/api/get_data.py?id=$id"
-    },
-    {
-      "src": "/api/store_data",
-      "dest": "/api/store_data.py"
-    }
+  "rewrites": [
+    { "source": "/api/init", "destination": "/api/init.py" },
+    { "source": "/api/init/:id", "destination": "/api/init.py?id=$id" },
+    { "source": "/api/settings", "destination": "/api/settings.py" },
+    { "source": "/api/characters", "destination": "/api/characters.py" },
+    { "source": "/api/characters/:name", "destination": "/api/characters.py?name=$name" },
+    { "source": "/api/get_character", "destination": "/api/get_character.py" },
+    { "source": "/api/get_data/:id", "destination": "/api/get_data.py?id=$id" },
+    { "source": "/api/store_data", "destination": "/api/store_data.py" }
   ],
   "headers": [
     {
